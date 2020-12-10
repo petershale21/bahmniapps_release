@@ -1,5 +1,22 @@
 <section class="reg-search-wrapper">
+    
+    <section class="primary-section-grid">
+        <h2 class="section-title">Location</h2>
+        <form class="select-file-form">
+            <fieldset class="select-file-type" style="padding:2px;">
+                <ul ng-repeat="(key, searchDomain) in searchDomains" style="float: left; ">
+                    <li style="width: 120px;">
+                        <input type="radio" name="upload-type" ng-model="option.selected"
+                                id="{{ key }}" ng-value="'{{ key }}'" >
+                        <label for="{{ key }}"><strong>{{ searchDomain }}</strong></label>
+                    </li>
+                </ul>
+            </fieldset>
+        </form>
+    </section>
+
     <section class="reg-search">
+        <section class="reg-search">
         <article class="search-seperator-l" ng-if="::patientIdentifierSearchConfig.show">
             <form name="searchByIdForm" ng-submit="searchById()" class="simple-form-ui clearfix" >
                     <label for="registrationNumber"><strong>{{ ::'REGISTRATION_LABEL_PATIENT_ID' | translate}}</strong></label>
@@ -14,6 +31,7 @@
 
             </form>
         </article>
+
         <article class="search-seperator-r">
             <form name="searchByNameForm" ng-submit="searchPatients()" class="simple-form-ui" >
 
@@ -22,6 +40,24 @@
                     <input tabindex="4" type="text" id="name" ng-model="searchParameters.name" placeholder="{{ ::'REGISTRATION_LABEL_ENTER_NAME' | translate}}">
                 </article>
                 <article class="fl" ng-if="::customAttributesSearchConfig.show">
+                    <label for="name"><strong>{{::customAttributesSearchConfig.label}}</strong></label>
+                    <input tabindex="5" type="text" id="customAttribute" ng-model="searchParameters.customAttribute" placeholder="{{::customAttributesSearchConfig.placeholder}}">
+                </article>
+
+                <article class="fl" ng-show="showNationalId()">
+                    <fieldset class="select-file-type">
+                        <label><strong>Gender</strong></label>
+                        <ul ng-repeat="(key, gender) in genderoptions">
+                            <li style="width: 120px;">
+                                <input type="radio" name="upload-type" ng-model="genderoption.selected"
+                                        id="{{ key }}" ng-value="'{{ key }}'" >
+                                <label for="{{ key }}"><strong>{{ gender }}</strong></label>
+                            </li>
+                        </ul>
+                    </fieldset>
+                </article>
+
+                <article class="fl" ng-if="::customAttributesSearchConfig.show" ng-show="!showNationalId()">
                     <label for="name"><strong>{{::customAttributesSearchConfig.label}}</strong></label>
                     <input tabindex="5" type="text" id="customAttribute" ng-model="searchParameters.customAttribute" placeholder="{{::customAttributesSearchConfig.placeholder}}">
                 </article>
@@ -35,9 +71,15 @@
                     <input tabindex="7" type="text" id="programAttribute" ng-model="searchParameters.programAttributeFieldValue" placeholder="{{ ::programAttributesSearchConfig.placeholder}}">
                 </article>
 
+                <article class="fl" ng-show="showNationalId()">
+                    <label for="name"><strong>National ID Number</strong></label>
+                    <input tabindex="8" type="text" id="nationalID" ng-model="searchParameters.nationalIdNumber" placeholder="Lesotho National ID">
+                </article>
+
+
                 <article class="fl">
                     <div class="reg-srch-btn">
-                        <button tabindex="8" type="submit" ng-disabled="disableSearchButton()">{{ ::'REGISTRATION_LABEL_SEARCH' | translate}}</button>
+                        <button tabindex="9" type="submit" ng-disabled="disableSearchButton()">{{ ::'REGISTRATION_LABEL_SEARCH' | translate}}</button>
                     </div>
                 </article>
             </form>
@@ -53,6 +95,44 @@
         </div>
     </div>
 
+    <!-- HIE SEARCH LIST -->
+    <div ng-if="hieresultsPresent()" class="registraition-search-results-container">
+        <table class="table">
+            <thead>
+            <tr>
+                <th><strong>Patient Identifier</strong></th>
+                <th><strong>National ID</strong></th>
+                <th><strong>Name</strong></th>
+                <th><strong>Surname</strong></th>
+                <th><strong>Gender</strong></th>
+                <th><strong>Age</strong></th>
+                <th><strong>Constituency</strong></th>
+                <th><strong>Village</strong></th>                                
+                <th><strong>District</strong></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr ng-repeat="result in hieresults">
+                <td>
+                    <a tabindex="{{ :: 9 + $index + 1 }}" ng-if="::(searchActions.length > 0)" ng-click="importPatientFromCR(result)">
+                        {{::result.extraIdentifiers["Patient Identifier"] || 'Not Assigned'}}
+                    </a>
+                </td>
+                <td>{{::result.extraIdentifiers["National ID"]}}</td>
+                <td>{{::result.givenName}}</td>
+                <td>{{::result.familyName}}</td>
+                <td>{{::result.gender}}</td>
+                <td>{{::result.age}}</td>
+                <td>{{::result.constituency}}</td>
+                <td>{{::result.village}}</td>
+                <td>{{::result.district}}</td>                
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- LOCAL SEARCH LIST -->
+    
     <div ng-if="resultsPresent()" infinite-scroll="nextPage()" infinite-scroll-immediate-check="false" infinite-scroll-disabled="noMoreResultsPresent" class="registraition-search-results-container">
         <table class="table">
             <thead>
