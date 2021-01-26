@@ -273,6 +273,15 @@ angular.module('bahmni.clinical').controller('ConsultationController',
             };
 
             $scope.openConsultation = function () {
+                localStorage.removeItem("Regimen");
+                localStorage.removeItem("Deactivate");
+                localStorage.removeItem("Days");
+                localStorage.removeItem("isSub");
+                localStorage.removeItem("isSwitch");
+                localStorage.removeItem("activateSet");
+                localStorage.removeItem("isOderhasBeenSaved");
+                localStorage.setItem("isOderhasBeenSaved",false);
+
                 if ($scope.showSaveConfirmDialogConfig) {
                     $rootScope.$broadcast("event:pageUnload");
                 }
@@ -437,6 +446,7 @@ angular.module('bahmni.clinical').controller('ConsultationController',
             };
 
             $scope.save = function (toStateConfig) {
+                localStorage.setItem("isOderhasBeenSaved",true);
                 if (!isFormValid()) {
                     $scope.$parent.$parent.$broadcast("event:errorsOnForm");
                     return $q.when({});

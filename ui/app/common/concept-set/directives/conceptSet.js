@@ -1,8 +1,8 @@
 'use strict';
 
 angular.module('bahmni.common.conceptSet')
-    .directive('conceptSet', ['contextChangeHandler', 'appService', 'observationsService', 'messagingService', 'conceptSetService', 'conceptSetUiConfigService', 'spinner',
-        function (contextChangeHandler, appService, observationsService, messagingService, conceptSetService, conceptSetUiConfigService, spinner) {
+    .directive('conceptSet', ['$rootScope','contextChangeHandler', 'appService', 'observationsService', 'messagingService', 'conceptSetService', 'conceptSetUiConfigService', 'spinner', '$q',
+        function ($timeout,contextChangeHandler, appService, observationsService, messagingService, conceptSetService, conceptSetUiConfigService, spinner, $q) {
             var controller = function ($scope) {
                 var conceptSetName = $scope.conceptSetName;
                 var ObservationUtil = Bahmni.Common.Obs.ObservationUtil;
@@ -10,9 +10,12 @@ angular.module('bahmni.common.conceptSet')
                 var observationMapper = new Bahmni.ConceptSet.ObservationMapper();
                 var validationHandler = $scope.validationHandler() || contextChangeHandler;
                 var id = "#" + $scope.sectionId;
+                var dateUtil = Bahmni.Common.Util.DateUtil;
 
                 $scope.atLeastOneValueIsSet = $scope.atLeastOneValueIsSet || false;
                 $scope.conceptSetRequired = false;
+                $scope.initialRegimen = "";
+                $scope.regimenSwitchSubstitute = [];
                 $scope.showTitleValue = $scope.showTitle();
                 $scope.numberOfVisits = conceptSetUIConfig[conceptSetName] && conceptSetUIConfig[conceptSetName].numberOfVisits ? conceptSetUIConfig[conceptSetName].numberOfVisits : null;
                 $scope.hideAbnormalButton = conceptSetUIConfig[conceptSetName] && conceptSetUIConfig[conceptSetName].hideAbnormalButton;
@@ -48,10 +51,26 @@ angular.module('bahmni.common.conceptSet')
 
                 var getDefaults = function () {
                     var conceptSetUI = appService.getAppDescriptor().getConfigValue("conceptSetUI");
+
                     if (!conceptSetUI || !conceptSetUI.defaults) {
                         return;
                     }
                     return conceptSetUI.defaults || {};
+                };
+
+                var getCodedAnswerWithDefaultAnswerStringRegimen = function (defaults, groupMember, currentRegimen) {
+                    var possibleAnswers = groupMember.possibleAnswers;
+                    var defaultAnswer = defaults[groupMember.concept.name];
+                    var defaultCodedAnswer;
+                    if (defaultAnswer instanceof Array) {
+                        defaultCodedAnswer = [];
+                        _.each(defaultAnswer, function (answer) {
+                            defaultCodedAnswer.push(_.find(possibleAnswers, {displayString: answer}));
+                        });
+                    } else {
+                        defaultCodedAnswer = _.find(possibleAnswers, {displayString: currentRegimen});
+                    }
+                    return defaultCodedAnswer;
                 };
 
                 var getCodedAnswerWithDefaultAnswerString = function (defaults, groupMember) {
@@ -74,6 +93,7 @@ angular.module('bahmni.common.conceptSet')
                         _.each(groupMembers, function (groupMember) {
                             var conceptFullName = groupMember.concept.name;
                             var present = _.includes(_.keys(defaults), conceptFullName);
+
                             if (present && groupMember.value == undefined) {
                                 if (groupMember.concept.dataType == "Coded") {
                                     setDefaultsForCodedObservations(groupMember, defaults);
@@ -93,6 +113,44 @@ angular.module('bahmni.common.conceptSet')
 
                 var setDefaultsForCodedObservations = function (observation, defaults) {
                     var defaultCodedAnswer = getCodedAnswerWithDefaultAnswerString(defaults, observation);
+
+                    // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
+                    // Will refactor accordingly
+                    var defaultCodedAnswerRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, $scope.initialRegimen);
+                    var defaultCodedAnswerSubsRegimen = "";
+                    var regimenSubstitutionValues = { observationDate: "" }, regimenSwitchValues = { observationDate: "" };
+
+                    if ($scope.regimenSwitchSubstitute && $scope.regimenSwitchSubstitute.length > 0) {
+                        _.each($scope.regimenSwitchSubstitute, function (treatmentAction) {
+                            if (treatmentAction.name == "HIVTC, Name of Substituted Regimen") {
+                                regimenSubstitutionValues = {
+                                    name: treatmentAction.name,
+                                    value: treatmentAction.value,
+                                    observationDate: treatmentAction.observationDateTime
+                                };
+                            } else { // Treatment switch date
+                                regimenSwitchValues = {
+                                    name: treatmentAction.name,
+                                    value: treatmentAction.value,
+                                    observationDate: treatmentAction.observationDateTime
+                                };
+                            }
+                        });
+
+                        if (regimenSubstitutionValues.observationDate && regimenSwitchValues.observationDate) {
+                            if (dateUtil.isBeforeDate(dateUtil.parseServerDateToDate(regimenSwitchValues.observationDate)
+                                , dateUtil.parseServerDateToDate(regimenSubstitutionValues.observationDate))) {
+                                defaultCodedAnswerSubsRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, regimenSubstitutionValues.value);
+                            } else {
+                                defaultCodedAnswerSubsRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, regimenSwitchValues.value);
+                            }
+                        } else if (regimenSubstitutionValues.observationDate && !regimenSwitchValues.observationDate) {
+                            defaultCodedAnswerSubsRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, regimenSubstitutionValues.value);
+                        } else if (regimenSwitchValues.observationDate && !regimenSubstitutionValues.observationDate) {
+                            defaultCodedAnswerSubsRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, regimenSwitchValues.value);
+                        }
+                    }
+
                     if (observation.isMultiSelect) {
                         if (!observation.hasValue()) {
                             _.each(defaultCodedAnswer, function (answer) {
@@ -100,7 +158,14 @@ angular.module('bahmni.common.conceptSet')
                             });
                         }
                     } else if (!(defaultCodedAnswer instanceof Array)) {
-                        observation.value = defaultCodedAnswer;
+                        // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
+                        if (defaultCodedAnswerRegimen && !defaultCodedAnswerSubsRegimen) {
+                            observation.value = defaultCodedAnswerRegimen;
+                        } else if (defaultCodedAnswerSubsRegimen) {
+                            observation.value = defaultCodedAnswerSubsRegimen;
+                        } else {
+                            observation.value = defaultCodedAnswer;
+                        }
                     }
                 };
 
@@ -140,7 +205,10 @@ angular.module('bahmni.common.conceptSet')
                 var clearFieldValuesOnDisabling = function (obs) {
                     obs.comment = undefined;
                     if (obs.value || obs.isBoolean) {
-                        obs.value = undefined;
+                        // Make ART Regimen an exception since we are pre-populating it to avoid data quality issues
+                        if (!(obs.concept.name == "HIVTC, ART Regimen")) {
+                            obs.value = undefined;
+                        }
                     } else if (obs.isMultiSelect) {
                         for (var key in obs.selectedObs) {
                             if (!obs.selectedObs[key].voided) {
@@ -150,10 +218,57 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
+
+// /*My test function to just take form values for my own use - Khahliso*/
+//                 var test = function (obsArray,groupMember) {
+//                     var oder= {DaysDispensed:0,Regimen:''};
+                    
+//                     if (!_.isEmpty(obsArray)) {
+//                         _.each(obsArray, function (obs) {
+
+//                             //var ARVDrugDaysDispensed=obs.observationDate;
+                           
+//                             if (obs.concept.name == "ART, Follow-up date") {
+
+//                                 //console.log("Testing followup date" + " " +obs.value);
+//                             }
+//                             if (obs.concept.name == "HTC, Pregnancy Status") {
+
+                                
+//                                             //console.log("Testing Regimen"+ " "+ obs.groupMembers.value);
+
+//                             }//   console.log("Testing Regimen"+ " "+ obs.value);
+                            
+//                           //  HIVTC, ARV drugs supply duration
+//                         //   HTC, Pregnancy Status
+//                         //   Function
+                             
+//                     //         var possibleAnswers = groupMember.possibleAnswers;
+                            
+//                     // if (observation.isMultiSelect) {
+//                     //     if (!observation.hasValue()) {
+//                     //         _.each(defaultCodedAnswer, function (answer) {
+//                     //             observation.selectAnswer(answer);
+//                     //         });
+//                     //     }
+//                     // }
+
+
+
+//                         });
+//                     }
+//                 };
+
+
+
                 var setObservationState = function (obsArray, disable, error, hide) {
                     if (!_.isEmpty(obsArray)) {
                         _.each(obsArray, function (obs) {
+                            // TODO: If initial regimen is not present for ART Regimen, always enable - Teboho
                             obs.disabled = disable || hide;
+                            if (obs.concept.name == "HIVTC, ART Regimen" && !$scope.initialRegimen) {
+                                obs.disabled = false;
+                            }
                             obs.error = error;
                             obs.hide = hide;
                             if (hide || obs.disabled) {
@@ -169,7 +284,11 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
+                let CurrentRegimen = null;
+                let ChangedRegien = null;
+
                 var processConditions = function (flattenedObs, fields, disable, error, hide) {
+                    CurrentRegimen = localStorage.getItem("Regimen");
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
                         var clonedObsInSameGroup;
@@ -184,6 +303,244 @@ angular.module('bahmni.common.conceptSet')
 
                         if (!_.isEmpty(matchingObsArray)) {
                             setObservationState(matchingObsArray, disable, error, hide);
+                            //test(matchingObsArray); //calling my test function - Khahliso
+                            var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
+                            var daysDispenses = null;
+                            var regimenTreatment = null;
+                            var isTreamtentActive = false;
+
+                            obsTreatment.forEach(element => {
+                                try {
+                                // setInterval(function()
+                                // {  
+                                //     matchingObsArray.forEach(switchRegimen => {
+                                        
+                                //         if(switchRegimen.label =="Name of Regimen Switched to") 
+                                //         {
+                                            
+                                //             if(switchRegimen.value != undefined)
+                                //             {
+                                //                 localStorage.setItem("Switch",true);
+                                //                // console.log(switchRegimen.value);
+                                //                //localStorage.removeItem("Regimen");
+                                //                // localStorage.setItem("Regimen",switchRegimen.value.displayString);
+                                //                 // localStorage.setItem("isOtherDrugsSelected", true)
+                                //                 // var isSub =  JSON.parse(localStorage.getItem("isSub") == false);
+                                //                 // {
+                                //                 //     if(!isSub)
+                                //                 //     {
+                                //                 //         try {
+                                //                 //             localStorage.setItem("isSub",false);
+                                //                 //             localStorage.setItem("isSwitch",true);
+                                //                 //             localStorage.setItem("Regimen",switchRegimen.value.displayString);
+                                //                 //         } catch (error) {
+                                                            
+                                //                 //         }
+                                                        
+                                //                 //     }
+                                                    
+
+                                //                 // }
+                                                
+                                //             }
+                                //             else{
+                                //                 localStorage.setItem("Switch",false);
+                                //             }
+
+                                //         }
+                                //         if(switchRegimen.label =="Treatment Substitution") 
+                                //         {
+                                             
+                                //             if(switchRegimen.uniqueId != undefined)
+                                //             {
+                                                
+                                //                 try {
+                                                   
+                                                   
+                                //                    // console.log(switchRegimen.value);
+                                //                    if(switchRegimen.groupMembers[1].value.displayString != null || switchRegimen.groupMembers[1].value.displayString != undefined )
+                                //                    {
+                                //                     localStorage.setItem("Subs",true);
+                                //                     localStorage.removeItem("Regimen");
+                                //                     localStorage.setItem("Regimen",switchRegimen.groupMembers[1].value.displayString);
+                                //                    }
+
+                                //                 } catch (error) {
+                                //                 }
+
+                                //                 // localStorage.setItem("isOtherDrugsSelected", true)
+                                //                 // var isSub =  JSON.parse(localStorage.getItem("isSub") == false);
+                                //                 // {
+                                //                 //     if(!isSub)
+                                //                 //     {
+                                //                 //     
+                                //                 //             localStorage.setItem("isSub",false);
+                                //                 //             localStorage.setItem("isSwitch",true);
+                                //                 //             localStorage.setItem("Regimen",switchRegimen.value.displayString);
+                                //                 //         } catch (error) {
+                                                            
+                                //                 //         }
+                                                        
+                                //                 //     }
+                                                    
+
+                                //                 // }
+                                                
+                                //             }
+                                //             else{
+                                //                 localStorage.setItem("Subs",false);
+                                //             }
+
+                                //         }
+
+                                
+                                //         // else if(switchRegimen.label =="Treatment Substitution") 
+                                //         // {
+                                            
+                                //         //     if(switchRegimen.groupMembers[1].value != undefined)
+                                //         //     {
+                                //         //         console.log(switchRegimen);
+                                //         //         localStorage.setItem("Subs",true);
+                                //         //         console.log(JSON.parse(localStorage.getItem("Subs")));
+                                //         //         localStorage.setItem("Regimen",switchRegimen.groupMembers[1].value.displayString);
+                                                
+
+                                //         //     }
+                                //         //     {
+                                               
+                                //         //         localStorage.setItem("Subs",false);
+                                //         //     }
+
+
+                                //         // }
+                                //         else if(switchRegimen.label == "ART Regimen" && switchRegimen.displayString != '')
+                                //         {
+                                //             localStorage.removeItem("Regimen");
+            
+                                //             if(JSON.parse(localStorage.getItem("Subs")) == false )
+                                //             {
+                                //                 var isSwitch =  JSON.parse(localStorage.getItem("Switch"));
+                                //                 {
+                                //                     if(isSwitch  == false)
+                                //                     {
+                                //                         try {
+                                //                             //console.log(switchRegimen.value.label);
+                                //                      localStorage.removeItem("Regimen");
+                                //                             localStorage.setItem("Regimen",switchRegimen.value.label);
+                                //                             localStorage.setItem("Switch",false);
+                                //                             localStorage.setItem("Subs",false);
+                                //                         } catch (error) {
+                                                            
+                                //                         }
+                                                        
+                                //                     }
+                                                    
+
+                                //                 }
+
+                                //             }
+                                            
+                                //         }
+
+                                //     });
+                                    
+                                 
+                                // }, 1000);
+                                let isSwitChRegSelected = false;
+                                let isSubRegSelected = false;
+                                setInterval(function()
+                                {  
+
+                                    //--------------------------------------------------SWITCHING-----------------------------------------------------
+                                    matchingObsArray.forEach(switchRegimen => {
+
+                                    var isSwitch =  JSON.parse(localStorage.getItem("Switch"));
+                                        if(isSwitch == false){
+                                            if(element.label == "ART Regimen"){
+                                                if(element.value != undefined)
+                                                {
+                                                    ChangedRegien = element.value.value;
+                                                    if(CurrentRegimen.localeCompare(ChangedRegien) != 0 )
+                                                    {
+                                                        CurrentRegimen = ChangedRegien;
+                                                        localStorage.setItem("Regimen",CurrentRegimen);
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        if(switchRegimen.label =="Name of Regimen Switched to") 
+                                        {
+                                            if(switchRegimen.value != undefined)
+                                            {
+                                                ChangedRegien = switchRegimen.value.displayString;
+                                                if(CurrentRegimen.localeCompare(ChangedRegien) != 0)
+                                                {
+                                                    isSwitChRegSelected = true;
+                                                    CurrentRegimen = ChangedRegien;
+                                                    localStorage.setItem("Regimen",CurrentRegimen);
+                                                    localStorage.setItem("Switch",true)
+                                                    
+                                                } 
+
+                                            }
+                                        }
+
+                                        if(switchRegimen.label =="Treatment Substitution") 
+                                        {
+
+                                            if(switchRegimen.groupMembers[1].value != undefined)
+                                            {
+                                                ChangedRegien = switchRegimen.groupMembers[1].value.displayString;
+                                                if(CurrentRegimen.localeCompare(ChangedRegien) != 0)
+                                                {
+                                                    isSubRegSelected = true;
+                                                    localStorage.setItem("Switch",true)
+                                                    CurrentRegimen = ChangedRegien;
+                                                    localStorage.setItem("Regimen",CurrentRegimen);
+                                                }
+                                            }
+                
+                                        }
+
+
+                                    });
+                                
+                                }, 1000);
+
+                                if(element.label == "ARV drugs days dispensed"){
+                                    if(element.value != undefined)
+                                    {
+                                        daysDispenses = element.value;
+                                       
+                                    }
+                                };
+
+                                if(element.label == "Follow-up date")
+                                {
+                                    if(element.value != undefined )
+                                    {
+                                        localStorage.setItem("followUp",element.value);
+                                        var isDeactivated = false;
+                                        var isNotEmpty = JSON.parse(localStorage.getItem("Deactivate"));
+                                        isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
+                                        if (isDeactivated == false)
+                                        {
+                                          isTreamtentActive = true;
+                                          localStorage.setItem("activateSet",isTreamtentActive);
+                                        }
+                                        else
+                                        {
+                                            isDeactivated == false;
+                                        }
+                                    }
+                                }
+                            
+                            
+                            } catch (error) {
+                                                            
+                                  }});
+                            
                         } else {
                             messagingService.showMessage("error", "No element found with name : " + field);
                         }
@@ -280,28 +637,82 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
                 var init = function () {
-                    return conceptSetService.getConcept({
-                        name: conceptSetName,
-                        v: "bahmni"
-                    }).then(function (response) {
-                        $scope.conceptSet = response.data.results[0];
-                        $scope.rootObservation = $scope.conceptSet ? observationMapper.map($scope.observations, $scope.conceptSet, conceptSetUIConfig) : null;
-                        if ($scope.rootObservation) {
-                            $scope.rootObservation.conceptSetName = $scope.conceptSetName;
-                            focusFirstObs();
-                            updateObservationsOnRootScope();
-                            var groupMembers = getObservationsOfCurrentTemplate()[0].groupMembers;
-                            var defaults = getDefaults();
-                            addDummyImage();
-                            setDefaultsForGroupMembers(groupMembers, defaults);
-                            var observationsOfCurrentTemplate = getObservationsOfCurrentTemplate();
-                            updateFormConditions(observationsOfCurrentTemplate, $scope.rootObservation);
-                        } else {
-                            $scope.showEmptyConceptSetMessage = true;
-                        }
-                    }).catch(function (error) {
-                        messagingService.showMessage('error', error.message);
-                    });
+                    localStorage.setItem("Switch",false);
+                    localStorage.setItem("Subs",false);
+                    localStorage.setItem("Regimen",undefined);
+                    localStorage.setItem("activateSet",false);
+                    // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
+                    // Will refactor accordingly
+                    if (conceptSetName == "HIV Treatment and Care Progress Template") {
+                        return $q.all([conceptSetService.getConcept({
+                            name: conceptSetName,
+                            v: "bahmni"
+                        }), observationsService.fetch($scope.patient.uuid, "HIVTC, ART Regimen", "initial"),
+                            observationsService.fetch($scope.patient.uuid, ["HIVTC, Name of Substituted Regimen",
+                                "HIVTC, Name of Switched Regimen"], "latest")]).then(function (response) {
+                                    if (response[1] && response[1].data.length > 0) {
+                                        $scope.initialRegimen = response[1].data[0].valueAsString;
+                                    }
+
+                                    _.each(response[2].data, function (regimen) {
+                                        $scope.regimenSwitchSubstitute.push({
+                                            name: regimen.concept.name,
+                                            value: regimen.valueAsString,
+                                            encounterDate: regimen.encounterDateTime,
+                                            observationDateTime: regimen.observationDateTime
+                                        });
+                                    });
+                                    
+
+                                    $scope.conceptSet = response[0].data.results[0];
+                                    $scope.rootObservation = $scope.conceptSet ? observationMapper.map($scope.observations, $scope.conceptSet, conceptSetUIConfig) : null;
+
+                                    if ($scope.rootObservation) {
+                                        $scope.rootObservation.conceptSetName = $scope.conceptSetName;
+                                        focusFirstObs();
+                                        updateObservationsOnRootScope();
+                                        var groupMembers = getObservationsOfCurrentTemplate()[0].groupMembers;
+                                        var defaults = getDefaults();
+                                        addDummyImage();
+
+                                        setDefaultsForGroupMembers(groupMembers, defaults);
+
+                                        var observationsOfCurrentTemplate = getObservationsOfCurrentTemplate();
+                                        updateFormConditions(observationsOfCurrentTemplate, $scope.rootObservation);
+                                    } else {
+                                        $scope.showEmptyConceptSetMessage = true;
+                                    }
+                                }).catch(function (error) {
+                                    messagingService.showMessage('error', error.message);
+                                });
+                    } else {
+                        // Original function
+                        return conceptSetService.getConcept({
+                            name: conceptSetName,
+                            v: "bahmni"
+                        }).then(function (response) {
+                            $scope.conceptSet = response.data.results[0];
+                            $scope.rootObservation = $scope.conceptSet ? observationMapper.map($scope.observations, $scope.conceptSet, conceptSetUIConfig) : null;
+
+                            if ($scope.rootObservation) {
+                                $scope.rootObservation.conceptSetName = $scope.conceptSetName;
+                                focusFirstObs();
+                                updateObservationsOnRootScope();
+                                var groupMembers = getObservationsOfCurrentTemplate()[0].groupMembers;
+                                var defaults = getDefaults();
+                                addDummyImage();
+
+                                setDefaultsForGroupMembers(groupMembers, defaults);
+
+                                var observationsOfCurrentTemplate = getObservationsOfCurrentTemplate();
+                                updateFormConditions(observationsOfCurrentTemplate, $scope.rootObservation);
+                            } else {
+                                $scope.showEmptyConceptSetMessage = true;
+                            }
+                        }).catch(function (error) {
+                            messagingService.showMessage('error', error.message);
+                        });
+                    }
                 };
                 spinner.forPromise(init(), id);
 

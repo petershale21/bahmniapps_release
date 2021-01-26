@@ -15,15 +15,22 @@ angular.module('bahmni.clinical')
             $scope.addTreatment = true;
             $scope.canOrderSetBeAdded = true;
             $scope.isSearchDisabled = false;
+            $scope.IsDoneFetchingDataOderSets = false;
 
+           //returns a list of all matching ordersets
             $scope.getFilteredOrderSets = function (searchTerm) {
+                //console.log(searchTerm);
                 if (searchTerm && searchTerm.length >= 3) {
                     orderSetService.getOrderSetsByQuery(searchTerm).then(function (response) {
                         $scope.orderSets = response.data.results;
+                       
+                        //console.log($scope.orderSets);
                         _.each($scope.orderSets, function (orderSet) {
                             _.each(orderSet.orderSetMembers, setUpOrderSetTransactionalData);
                         });
+
                     });
+                    $scope.IsDoneFetchingDataOderSets = true;
                 } else {
                     $scope.orderSets = {};
                 }
@@ -304,6 +311,153 @@ angular.module('bahmni.clinical')
                 $scope.treatment.calculateQuantityAndUnit();
             }, true);
 
+
+/***********************************************************************
+ * Add drug action that needs to be studied deeper
+ */
+            $timeout( function(){
+                let Regimen =  localStorage.getItem("Regimen");
+                let isRegimenValid =  (localStorage.getItem("Regimen")).length > 0 ? true : false;
+               
+                if (Regimen && Regimen.length >= 3) {
+                    orderSetService.getOrderSetsByQuery(Regimen).then(function (response) {
+                        $scope.orderSets = response.data.results;
+                        _.each($scope.orderSets, function (orderSet) {
+                            _.each(orderSet.orderSetMembers, setUpOrderSetTransactionalData);
+                        });
+
+                        if(_.isEmpty($scope.orderSets) == false)
+                        {
+                            
+                            $scope.treatments.pop();
+                            if(JSON.parse(localStorage.getItem("isOderhasBeenSaved")) != true )
+                            {
+                                $scope.addOrderSet($scope.orderSets[0]);
+                            }
+                            else
+                            {
+                                $scope.clearForm();
+                            }
+                            
+                        }
+                        else
+                        {
+                            
+                            $scope.removeOrderSet();
+                        }
+                       
+                    });
+                   
+                  }
+                else {
+                    $scope.orderSets = {};
+                }
+               
+                let selectItem = {
+                    elementId: "drug-name",
+                    elementType: "text",
+                    term: Regimen 
+                }
+
+               // localStorage.setItem("isOderhasBeenSaved",false);
+            
+                $scope.getDrugs(selectItem).then(
+                    (value) => 
+                    {
+
+                        try{
+                        let drug = value[0];
+                        let DrugOder = {
+                            drug,
+                            label: value[0].name,
+                            value: value[0].name
+                        }
+                        $scope.onSelect(DrugOder);
+                        if($scope.orderSets.length == 0)
+                        {
+                            $scope.TriggerAddIfFollowupDate(Regimen);
+                        }
+                    }catch(e){
+                        console.log(e.message)
+                    }
+                    }
+                );
+        
+
+                
+                }, 3000);
+            //setInterval(function(){ $scope.TriggerAddIfFollowupDate() }, 3000);
+            
+
+            $scope.TriggerAddIfFollowupDate = function(regimen){
+
+                var isActive = JSON.parse(localStorage.getItem("activateSet"));
+                var days =  new Date(localStorage.getItem('followUp')) - $scope.treatment.encounterDate;
+                var calculatedDays = Math.ceil(days / (1000 * 60 * 60 * 24)); 
+
+                if(isActive == true)
+                {
+
+                    //let Regimen =  localStorage.getItem("Regimen");
+                   // $scope.treatment.drugNameDisplay = Regimen; 
+                    $scope.treatmentdrugNonCoded = regimen;
+                    $scope.treatment.uniformDosingType.dose = 1;
+                    $scope.treatment.uniformDosingType.doseUnits = "Tablet(s)"; 
+                    $scope.treatment.uniformDosingType.frequency = "Once a day";
+                    $scope.treatment.route = "Oral"; 
+                    $scope.treatmentfrequencyType =  "uniform"; 
+                    $scope.treatment.instructions =  "As directed" 
+                    $scope.treatment.duration = calculatedDays;//to be calculated  ---
+                    $scope.treatment.durationInDays = calculatedDays; //to be calculated ---
+                    $scope.treatment.durationUnit = "Day(s)"; 
+                    $scope.treatment.quantity = days * $scope.treatment.uniformDosingType.dose * 1;//to calculated ---
+                    $scope.treatment.quantityUnit =  "Tablet(s)"; 
+                    if(JSON.parse(localStorage.getItem("isOderhasBeenSaved")) != true )
+                    {
+                        $scope.add();
+                        scope.clearForm();
+                    }
+                    else
+                    {
+                        $scope.clearForm();
+                    }
+                    localStorage.setItem("Deactivate",true);
+                }
+                if(JSON.parse(localStorage.getItem("Deactivate")))
+                {
+
+                   // var Days =  localStorage.getItem("Days");
+                    //let Regimen =  localStorage.getItem("Regimen");
+                    $scope.treatment.drugNameDisplay = regimen; 
+                    $scope.treatmentdrugNonCoded = Regimen;
+                    $scope.treatment.uniformDosingType.dose = 1;
+                    $scope.treatment.uniformDosingType.doseUnits = "Tablet(s)"; 
+                    $scope.treatment.uniformDosingType.frequency = "Once a day";
+                    $scope.treatment.route = "Oral"; 
+                    $scope.treatmentfrequencyType =  "uniform"; 
+                    $scope.treatment.instructions =  "As directed" 
+                    $scope.treatment.duration = calculatedDays;//to be calculated  ---
+                    $scope.treatment.durationInDays = calculatedDays; //to be calculated ---
+                    $scope.treatment.durationUnit = "Day(s)"; 
+                    $scope.treatment.quantity = 0;//to calculated ---
+                    $scope.treatment.quantityUnit =  "Tablet(s)"; 
+
+
+
+                    if(JSON.parse(localStorage.getItem("isOderhasBeenSaved")) != true)
+                    {
+                        
+                        $scope.treatments.pop();
+                        $scope.add();
+                        scope.clearForm();
+                    }
+                    else{
+                        $scope.clearForm();
+                    }
+                    localStorage.setItem("Deactivate",true);
+                }
+            };
+
             $scope.add = function () {
                 var treatments = $scope.treatments;
                 if ($scope.treatment.isNewOrderSet) {
@@ -340,8 +494,11 @@ angular.module('bahmni.clinical')
                     treatments.splice($scope.treatment.currentIndex, 1, $scope.treatment);
                     $scope.treatment.isBeingEdited = false;
                 } else {
-                    treatments.push($scope.treatment);
+
+                treatments.push($scope.treatment);
+
                 }
+                localStorage.removeItem('activateSet');
                 $scope.clearForm();
             };
 
@@ -521,6 +678,7 @@ angular.module('bahmni.clinical')
                         return;
                     }
                     delete $scope.treatment.drug;
+             
                 };
             })();
 
@@ -588,7 +746,7 @@ angular.module('bahmni.clinical')
                         var removableOrder = _.find(activeDrugOrders, {uuid: discontinuedDrug.uuid});
                         if (discontinuedDrug) {
                             removableOrder.orderReasonText = discontinuedDrug.orderReasonText;
-                            removableOrder.dateActivated = null;
+                            removableOrder.dateActivated = discontinuedDrug.dateStopped;
                             removableOrder.scheduledDate = discontinuedDrug.dateStopped;
                             removableOrder.dateStopped = discontinuedDrug.dateStopped;
 
@@ -641,11 +799,13 @@ angular.module('bahmni.clinical')
                 deleteDrugIfEmpty(orderSetMember.orderTemplate);
             };
             var calculateDoseForTemplatesIn = function (orderSet) {
+                try{
                 $scope.newOrderSet.name = orderSet.name;
                 var orderSetMemberTemplates = _.map(orderSet.orderSetMembers, 'orderTemplate');
                 var promisesToCalculateDose = _.map(orderSetMemberTemplates, putCalculatedDose);
                 var returnOrderSet = function () { return orderSet; };
                 return $q.all(promisesToCalculateDose).then(returnOrderSet);
+                }catch{}
             };
             var createDrugOrderViewModel = function (orderTemplate) {
                 orderTemplate.effectiveStartDate = $scope.newOrderSet.date;
@@ -704,6 +864,7 @@ angular.module('bahmni.clinical')
                 $scope.popupActive = true;
             };
             $scope.addOrderSet = function (orderSet) {
+                try{
                 $scope.isSearchDisabled = true;
                 scrollTop();
                 var setUpNewOrderSet = function () {
@@ -711,10 +872,14 @@ angular.module('bahmni.clinical')
                     $scope.newOrderSet.uuid = orderSet.uuid;
                     $scope.isSearchDisabled = true;
                 };
+
+                //console.log(orderset);
+                
                 calculateDoseForTemplatesIn(orderSet)
                     .then(createDrugOrdersAndGetConflicts)
                     .then(showConflictMessageIfAny)
                     .then(setUpNewOrderSet);
+            }catch{}
             };
 
             $scope.removeOrderSet = function () {
