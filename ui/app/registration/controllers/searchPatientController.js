@@ -101,7 +101,6 @@ angular.module('bahmni.registration')
                         return searchPromise;
                     } else if ($scope.option.selected == "national") {
                         $scope.searchParameters.gender = searchParameters.gender == "male" ? "M" : "F";
-
                         var searchPromise = patientService.searchHIE(
                             $scope.searchParameters.name,
                             undefined,
@@ -119,6 +118,7 @@ angular.module('bahmni.registration')
                         ).then(function (response) {
                             mapExtraIdentifiers(response);
                             if (response.pageOfResults.length > 0) {
+                                console.log(response.pageOfResults);
                                 $scope.hieresults = response.pageOfResults;
                                 $scope.noResultsMessage = null;
                             } else {
@@ -421,7 +421,7 @@ angular.module('bahmni.registration')
                 var queryParams = {};
                 $scope.results = [];
                 $scope.hieresults = [];
-
+                console.log($scope.searchParameters);
                 if ($scope.searchParameters.name) {
                     queryParams.name = $scope.searchParameters.name;
                 }
