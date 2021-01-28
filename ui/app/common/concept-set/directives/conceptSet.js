@@ -218,49 +218,6 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
-
-// /*My test function to just take form values for my own use - Khahliso*/
-//                 var test = function (obsArray,groupMember) {
-//                     var oder= {DaysDispensed:0,Regimen:''};
-                    
-//                     if (!_.isEmpty(obsArray)) {
-//                         _.each(obsArray, function (obs) {
-
-//                             //var ARVDrugDaysDispensed=obs.observationDate;
-                           
-//                             if (obs.concept.name == "ART, Follow-up date") {
-
-//                                 //console.log("Testing followup date" + " " +obs.value);
-//                             }
-//                             if (obs.concept.name == "HTC, Pregnancy Status") {
-
-                                
-//                                             //console.log("Testing Regimen"+ " "+ obs.groupMembers.value);
-
-//                             }//   console.log("Testing Regimen"+ " "+ obs.value);
-                            
-//                           //  HIVTC, ARV drugs supply duration
-//                         //   HTC, Pregnancy Status
-//                         //   Function
-                             
-//                     //         var possibleAnswers = groupMember.possibleAnswers;
-                            
-//                     // if (observation.isMultiSelect) {
-//                     //     if (!observation.hasValue()) {
-//                     //         _.each(defaultCodedAnswer, function (answer) {
-//                     //             observation.selectAnswer(answer);
-//                     //         });
-//                     //     }
-//                     // }
-
-
-
-//                         });
-//                     }
-//                 };
-
-
-
                 var setObservationState = function (obsArray, disable, error, hide) {
                     if (!_.isEmpty(obsArray)) {
                         _.each(obsArray, function (obs) {
@@ -288,7 +245,9 @@ angular.module('bahmni.common.conceptSet')
                 let ChangedRegien = null;
 
                 var processConditions = function (flattenedObs, fields, disable, error, hide) {
+
                     CurrentRegimen = localStorage.getItem("Regimen");
+
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
                         var clonedObsInSameGroup;
@@ -309,237 +268,59 @@ angular.module('bahmni.common.conceptSet')
                             var regimenTreatment = null;
                             var isTreamtentActive = false;
 
-                            obsTreatment.forEach(element => {
-                                try {
-                                // setInterval(function()
-                                // {  
-                                //     matchingObsArray.forEach(switchRegimen => {
-                                        
-                                //         if(switchRegimen.label =="Name of Regimen Switched to") 
-                                //         {
-                                            
-                                //             if(switchRegimen.value != undefined)
-                                //             {
-                                //                 localStorage.setItem("Switch",true);
-                                //                // console.log(switchRegimen.value);
-                                //                //localStorage.removeItem("Regimen");
-                                //                // localStorage.setItem("Regimen",switchRegimen.value.displayString);
-                                //                 // localStorage.setItem("isOtherDrugsSelected", true)
-                                //                 // var isSub =  JSON.parse(localStorage.getItem("isSub") == false);
-                                //                 // {
-                                //                 //     if(!isSub)
-                                //                 //     {
-                                //                 //         try {
-                                //                 //             localStorage.setItem("isSub",false);
-                                //                 //             localStorage.setItem("isSwitch",true);
-                                //                 //             localStorage.setItem("Regimen",switchRegimen.value.displayString);
-                                //                 //         } catch (error) {
-                                                            
-                                //                 //         }
-                                                        
-                                //                 //     }
-                                                    
-
-                                //                 // }
-                                                
-                                //             }
-                                //             else{
-                                //                 localStorage.setItem("Switch",false);
-                                //             }
-
-                                //         }
-                                //         if(switchRegimen.label =="Treatment Substitution") 
-                                //         {
-                                             
-                                //             if(switchRegimen.uniqueId != undefined)
-                                //             {
-                                                
-                                //                 try {
-                                                   
-                                                   
-                                //                    // console.log(switchRegimen.value);
-                                //                    if(switchRegimen.groupMembers[1].value.displayString != null || switchRegimen.groupMembers[1].value.displayString != undefined )
-                                //                    {
-                                //                     localStorage.setItem("Subs",true);
-                                //                     localStorage.removeItem("Regimen");
-                                //                     localStorage.setItem("Regimen",switchRegimen.groupMembers[1].value.displayString);
-                                //                    }
-
-                                //                 } catch (error) {
-                                //                 }
-
-                                //                 // localStorage.setItem("isOtherDrugsSelected", true)
-                                //                 // var isSub =  JSON.parse(localStorage.getItem("isSub") == false);
-                                //                 // {
-                                //                 //     if(!isSub)
-                                //                 //     {
-                                //                 //     
-                                //                 //             localStorage.setItem("isSub",false);
-                                //                 //             localStorage.setItem("isSwitch",true);
-                                //                 //             localStorage.setItem("Regimen",switchRegimen.value.displayString);
-                                //                 //         } catch (error) {
-                                                            
-                                //                 //         }
-                                                        
-                                //                 //     }
-                                                    
-
-                                //                 // }
-                                                
-                                //             }
-                                //             else{
-                                //                 localStorage.setItem("Subs",false);
-                                //             }
-
-                                //         }
-
-                                
-                                //         // else if(switchRegimen.label =="Treatment Substitution") 
-                                //         // {
-                                            
-                                //         //     if(switchRegimen.groupMembers[1].value != undefined)
-                                //         //     {
-                                //         //         console.log(switchRegimen);
-                                //         //         localStorage.setItem("Subs",true);
-                                //         //         console.log(JSON.parse(localStorage.getItem("Subs")));
-                                //         //         localStorage.setItem("Regimen",switchRegimen.groupMembers[1].value.displayString);
-                                                
-
-                                //         //     }
-                                //         //     {
-                                               
-                                //         //         localStorage.setItem("Subs",false);
-                                //         //     }
-
-
-                                //         // }
-                                //         else if(switchRegimen.label == "ART Regimen" && switchRegimen.displayString != '')
-                                //         {
-                                //             localStorage.removeItem("Regimen");
-            
-                                //             if(JSON.parse(localStorage.getItem("Subs")) == false )
-                                //             {
-                                //                 var isSwitch =  JSON.parse(localStorage.getItem("Switch"));
-                                //                 {
-                                //                     if(isSwitch  == false)
-                                //                     {
-                                //                         try {
-                                //                             //console.log(switchRegimen.value.label);
-                                //                      localStorage.removeItem("Regimen");
-                                //                             localStorage.setItem("Regimen",switchRegimen.value.label);
-                                //                             localStorage.setItem("Switch",false);
-                                //                             localStorage.setItem("Subs",false);
-                                //                         } catch (error) {
-                                                            
-                                //                         }
-                                                        
-                                //                     }
-                                                    
-
-                                //                 }
-
-                                //             }
-                                            
-                                //         }
-
-                                //     });
-                                    
-                                 
-                                // }, 1000);
-                                let isSwitChRegSelected = false;
-                                let isSubRegSelected = false;
-                                setInterval(function()
-                                {  
-
-                                    //--------------------------------------------------SWITCHING-----------------------------------------------------
-                                    matchingObsArray.forEach(switchRegimen => {
-
-                                    var isSwitch =  JSON.parse(localStorage.getItem("Switch"));
-                                        if(isSwitch == false){
-                                            if(element.label == "ART Regimen"){
-                                                if(element.value != undefined)
-                                                {
-                                                    ChangedRegien = element.value.value;
-                                                    if(CurrentRegimen.localeCompare(ChangedRegien) != 0 )
-                                                    {
-                                                        CurrentRegimen = ChangedRegien;
-                                                        localStorage.setItem("Regimen",CurrentRegimen);
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        if(switchRegimen.label =="Name of Regimen Switched to") 
-                                        {
-                                            if(switchRegimen.value != undefined)
-                                            {
-                                                ChangedRegien = switchRegimen.value.displayString;
-                                                if(CurrentRegimen.localeCompare(ChangedRegien) != 0)
-                                                {
-                                                    isSwitChRegSelected = true;
-                                                    CurrentRegimen = ChangedRegien;
-                                                    localStorage.setItem("Regimen",CurrentRegimen);
-                                                    localStorage.setItem("Switch",true)
-                                                    
-                                                } 
-
-                                            }
-                                        }
-
-                                        if(switchRegimen.label =="Treatment Substitution") 
-                                        {
-
-                                            if(switchRegimen.groupMembers[1].value != undefined)
-                                            {
-                                                ChangedRegien = switchRegimen.groupMembers[1].value.displayString;
-                                                if(CurrentRegimen.localeCompare(ChangedRegien) != 0)
-                                                {
-                                                    isSubRegSelected = true;
-                                                    localStorage.setItem("Switch",true)
-                                                    CurrentRegimen = ChangedRegien;
-                                                    localStorage.setItem("Regimen",CurrentRegimen);
-                                                }
-                                            }
-                
-                                        }
-
-
-                                    });
-                                
-                                }, 1000);
-
-                                if(element.label == "ARV drugs days dispensed"){
-                                    if(element.value != undefined)
+                            $scope.$watch(function() { 
+                                matchingObsArray.forEach(switchRegimen => {
+                                    if(switchRegimen.label =="Name of Regimen Switched to") 
                                     {
-                                        daysDispenses = element.value;
-                                       
+                                        if(switchRegimen.value != undefined)
+                                        {
+                                            localStorage.setItem("Regimen",switchRegimen.value.displayString);
+                                        }
+    
                                     }
-                                };
-
-                                if(element.label == "Follow-up date")
-                                {
-                                    if(element.value != undefined )
+                                    else if(switchRegimen.label =="Treatment Substitution") 
                                     {
-                                        localStorage.setItem("followUp",element.value);
-                                        var isDeactivated = false;
-                                        var isNotEmpty = JSON.parse(localStorage.getItem("Deactivate"));
-                                        isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
-                                        if (isDeactivated == false)
+                                        if(switchRegimen.groupMembers[1].value != undefined)
                                         {
-                                          isTreamtentActive = true;
-                                          localStorage.setItem("activateSet",isTreamtentActive);
-                                        }
-                                        else
-                                        {
-                                            isDeactivated == false;
+                                            localStorage.setItem("Regimen",switchRegimen.groupMembers[1].value.displayString);
                                         }
                                     }
-                                }
-                            
-                            
-                            } catch (error) {
-                                                            
-                                  }});
+                                    else if(switchRegimen.label == "ART Regimen"){
+                                        if(switchRegimen.value != undefined)
+                                        {
+                                            localStorage.setItem("Regimen",switchRegimen.value.value);
+                                        }
+                                    }
+                                });
+                                obsTreatment.forEach(element => {
+                                    if(element.label == "ARV drugs days dispensed"){
+                                        if(element.value != undefined)
+                                        {
+                                            daysDispenses = element.value;
+                                        }
+                                    };
+                                   
+                                    if(element.label == "Follow-up date")
+                                    {
+                                        if(element.value != undefined )
+                                        {
+                                            localStorage.setItem("followUp",element.value);
+                                            var isDeactivated = false;
+                                            var isNotEmpty = JSON.parse(localStorage.getItem("Deactivate"));
+                                            isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
+                                            if (isDeactivated == false)
+                                            {
+                                            isTreamtentActive = true;
+                                            localStorage.setItem("activateSet",isTreamtentActive);
+                                            }
+                                            else
+                                            {
+                                                isDeactivated == false;
+                                            }
+                                        }
+                                    }
+                                })
+                            });
                             
                         } else {
                             messagingService.showMessage("error", "No element found with name : " + field);
@@ -639,7 +420,7 @@ angular.module('bahmni.common.conceptSet')
                 var init = function () {
                     localStorage.setItem("Switch",false);
                     localStorage.setItem("Subs",false);
-                    localStorage.setItem("Regimen",undefined);
+                    //localStorage.setItem("Regimen",undefined);
                     localStorage.setItem("activateSet",false);
                     // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
                     // Will refactor accordingly

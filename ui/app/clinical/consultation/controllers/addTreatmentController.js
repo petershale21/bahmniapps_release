@@ -315,10 +315,10 @@ angular.module('bahmni.clinical')
 /***********************************************************************
  * Add drug action that needs to be studied deeper
  */
-            $timeout( function(){
+            var UpdateOrderFromObsData =  function(){
+                
                 let Regimen =  localStorage.getItem("Regimen");
-                let isRegimenValid =  (localStorage.getItem("Regimen")).length > 0 ? true : false;
-               
+
                 if (Regimen && Regimen.length >= 3) {
                     orderSetService.getOrderSetsByQuery(Regimen).then(function (response) {
                         $scope.orderSets = response.data.results;
@@ -330,6 +330,11 @@ angular.module('bahmni.clinical')
                         {
                             
                             $scope.treatments.pop();
+                            console.log($scope.orderSetTreatments);
+                            while($scope.orderSetTreatments.length > 0) {
+                                $scope.orderSetTreatments.pop();
+                            }
+                            console.log($scope.orderSetTreatments);
                             if(JSON.parse(localStorage.getItem("isOderhasBeenSaved")) != true )
                             {
                                 $scope.addOrderSet($scope.orderSets[0]);
@@ -358,13 +363,11 @@ angular.module('bahmni.clinical')
                     elementType: "text",
                     term: Regimen 
                 }
-
-               // localStorage.setItem("isOderhasBeenSaved",false);
-            
+      
                 $scope.getDrugs(selectItem).then(
                     (value) => 
                     {
-
+                        $scope.treatments.pop();
                         try{
                         let drug = value[0];
                         let DrugOder = {
@@ -385,7 +388,7 @@ angular.module('bahmni.clinical')
         
 
                 
-                }, 3000);
+                }
             //setInterval(function(){ $scope.TriggerAddIfFollowupDate() }, 3000);
             
 
@@ -919,6 +922,7 @@ angular.module('bahmni.clinical')
                 mergeActiveAndScheduledWithDiscontinuedOrders();
 
                 $scope.treatmentConfig = treatmentConfig;// $scope.treatmentConfig used only in UI
+                UpdateOrderFromObsData();
             };
             init();
         }]);
