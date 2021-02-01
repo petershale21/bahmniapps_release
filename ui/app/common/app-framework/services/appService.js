@@ -232,4 +232,47 @@ angular.module('bahmni.common.appFramework')
                 });
                 return appLoader.promise;
             };
+
+                        //**************Function to be used to set and get flags**************** */
+                        let Regimen = '';
+                        let isActiveSet = false; 
+                        let isDeactivated = false;
+                        let Followupdate = '';
+                        let isOderhasBeenSaved = null;
+                        this.setRegimen  = function (_regimen){
+                            Regimen = _regimen;
+                        }
+                        this.getRegimen = function()
+                        {
+                            return Regimen;
+                        }
+                        this.setActive  = function (_isActiveSet){
+                            isActiveSet = _isActiveSet;
+                        }
+                        this.getActive  = function()
+                        {
+                            return isActiveSet;
+                        }
+                        this.setDeactivated  = function (_isDeactivated){
+                            isDeactivated = _isDeactivated;
+                        }
+                        this.getDeactivated = function()
+                        {
+                            return isDeactivated;
+                        }
+                        this.setFollowupdate  = function (_Followupdate){
+                            Followupdate = _Followupdate ;
+                        }
+                        this.getFollowupdate  = function()
+                        {
+                            return Followupdate ;
+                        }
+                        this.setOrderstatus = function (_isOderhasBeenSaved){
+                            isOderhasBeenSaved= _isOderhasBeenSaved;
+                        }
+                        this.getOrderstatus  = function()
+                        {
+                            return isOderhasBeenSaved ;
+                        }
+
         }]);

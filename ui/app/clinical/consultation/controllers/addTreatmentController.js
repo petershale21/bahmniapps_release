@@ -17,14 +17,10 @@ angular.module('bahmni.clinical')
             $scope.isSearchDisabled = false;
             $scope.IsDoneFetchingDataOderSets = false;
 
-           //returns a list of all matching ordersets
+
             $scope.getFilteredOrderSets = function (searchTerm) {
-                //console.log(searchTerm);
                 if (searchTerm && searchTerm.length >= 3) {
                     orderSetService.getOrderSetsByQuery(searchTerm).then(function (response) {
-                        $scope.orderSets = response.data.results;
-                       
-                        //console.log($scope.orderSets);
                         _.each($scope.orderSets, function (orderSet) {
                             _.each(orderSet.orderSetMembers, setUpOrderSetTransactionalData);
                         });
@@ -316,8 +312,7 @@ angular.module('bahmni.clinical')
  * Add drug action that needs to be studied deeper
  */
             var UpdateOrderFromObsData =  function(){
-                
-                let Regimen =  localStorage.getItem("Regimen");
+                let Regimen = appService.getRegimen();
 
                 if (Regimen && Regimen.length >= 3) {
                     orderSetService.getOrderSetsByQuery(Regimen).then(function (response) {
@@ -330,12 +325,10 @@ angular.module('bahmni.clinical')
                         {
                             
                             $scope.treatments.pop();
-                            console.log($scope.orderSetTreatments);
                             while($scope.orderSetTreatments.length > 0) {
                                 $scope.orderSetTreatments.pop();
                             }
-                            console.log($scope.orderSetTreatments);
-                            if(JSON.parse(localStorage.getItem("isOderhasBeenSaved")) != true )
+                            if(appService.getOrderstatus() != true )
                             {
                                 $scope.addOrderSet($scope.orderSets[0]);
                             }
@@ -381,7 +374,7 @@ angular.module('bahmni.clinical')
                             $scope.TriggerAddIfFollowupDate(Regimen);
                         }
                     }catch(e){
-                        console.log(e.message)
+                        //console.log(e.message)
                     }
                     }
                 );
@@ -389,20 +382,16 @@ angular.module('bahmni.clinical')
 
                 
                 }
-            //setInterval(function(){ $scope.TriggerAddIfFollowupDate() }, 3000);
             
 
             $scope.TriggerAddIfFollowupDate = function(regimen){
-
-                var isActive = JSON.parse(localStorage.getItem("activateSet"));
-                var days =  new Date(localStorage.getItem('followUp')) - $scope.treatment.encounterDate;
+                var isActive = appService.getActive();
+                var days = new Date (appService.getFollowupdate()) -  $scope.treatment.encounterDate; 
                 var calculatedDays = Math.ceil(days / (1000 * 60 * 60 * 24)); 
 
                 if(isActive == true)
                 {
 
-                    //let Regimen =  localStorage.getItem("Regimen");
-                   // $scope.treatment.drugNameDisplay = Regimen; 
                     $scope.treatmentdrugNonCoded = regimen;
                     $scope.treatment.uniformDosingType.dose = 1;
                     $scope.treatment.uniformDosingType.doseUnits = "Tablet(s)"; 
@@ -415,7 +404,7 @@ angular.module('bahmni.clinical')
                     $scope.treatment.durationUnit = "Day(s)"; 
                     $scope.treatment.quantity = days * $scope.treatment.uniformDosingType.dose * 1;//to calculated ---
                     $scope.treatment.quantityUnit =  "Tablet(s)"; 
-                    if(JSON.parse(localStorage.getItem("isOderhasBeenSaved")) != true )
+                    if(appService.getOrderstatus() != true )
                     {
                         $scope.add();
                         scope.clearForm();
@@ -424,13 +413,10 @@ angular.module('bahmni.clinical')
                     {
                         $scope.clearForm();
                     }
-                    localStorage.setItem("Deactivate",true);
+                    appService.setDeactivated(true);
                 }
-                if(JSON.parse(localStorage.getItem("Deactivate")))
+                if(appService.getDeactivated())
                 {
-
-                   // var Days =  localStorage.getItem("Days");
-                    //let Regimen =  localStorage.getItem("Regimen");
                     $scope.treatment.drugNameDisplay = regimen; 
                     $scope.treatmentdrugNonCoded = Regimen;
                     $scope.treatment.uniformDosingType.dose = 1;
@@ -447,7 +433,7 @@ angular.module('bahmni.clinical')
 
 
 
-                    if(JSON.parse(localStorage.getItem("isOderhasBeenSaved")) != true)
+                    if(appService.getOrderstatus() != true)
                     {
                         
                         $scope.treatments.pop();
@@ -457,7 +443,8 @@ angular.module('bahmni.clinical')
                     else{
                         $scope.clearForm();
                     }
-                    localStorage.setItem("Deactivate",true);
+
+                    appService.setDeactivated(true);
                 }
             };
 
@@ -501,7 +488,7 @@ angular.module('bahmni.clinical')
                 treatments.push($scope.treatment);
 
                 }
-                localStorage.removeItem('activateSet');
+                appService.setActive(null);
                 $scope.clearForm();
             };
 
@@ -876,7 +863,6 @@ angular.module('bahmni.clinical')
                     $scope.isSearchDisabled = true;
                 };
 
-                //console.log(orderset);
                 
                 calculateDoseForTemplatesIn(orderSet)
                     .then(createDrugOrdersAndGetConflicts)

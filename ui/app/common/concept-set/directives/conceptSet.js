@@ -19,7 +19,9 @@ angular.module('bahmni.common.conceptSet')
                 $scope.showTitleValue = $scope.showTitle();
                 $scope.numberOfVisits = conceptSetUIConfig[conceptSetName] && conceptSetUIConfig[conceptSetName].numberOfVisits ? conceptSetUIConfig[conceptSetName].numberOfVisits : null;
                 $scope.hideAbnormalButton = conceptSetUIConfig[conceptSetName] && conceptSetUIConfig[conceptSetName].hideAbnormalButton;
-
+       
+               
+               
                 var focusFirstObs = function () {
                     if ($scope.conceptSetFocused && $scope.rootObservation.groupMembers && $scope.rootObservation.groupMembers.length > 0) {
                         var firstObs = _.find($scope.rootObservation.groupMembers, function (obs) {
@@ -241,12 +243,10 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
-                let CurrentRegimen = null;
-                let ChangedRegien = null;
+        
 
                 var processConditions = function (flattenedObs, fields, disable, error, hide) {
 
-                    CurrentRegimen = localStorage.getItem("Regimen");
 
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
@@ -262,10 +262,8 @@ angular.module('bahmni.common.conceptSet')
 
                         if (!_.isEmpty(matchingObsArray)) {
                             setObservationState(matchingObsArray, disable, error, hide);
-                            //test(matchingObsArray); //calling my test function - Khahliso
                             var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
                             var daysDispenses = null;
-                            var regimenTreatment = null;
                             var isTreamtentActive = false;
 
                             $scope.$watch(function() { 
@@ -274,7 +272,7 @@ angular.module('bahmni.common.conceptSet')
                                     {
                                         if(switchRegimen.value != undefined)
                                         {
-                                            localStorage.setItem("Regimen",switchRegimen.value.displayString);
+                                            appService.setRegimen(switchRegimen.value.displayString);
                                         }
     
                                     }
@@ -282,13 +280,13 @@ angular.module('bahmni.common.conceptSet')
                                     {
                                         if(switchRegimen.groupMembers[1].value != undefined)
                                         {
-                                            localStorage.setItem("Regimen",switchRegimen.groupMembers[1].value.displayString);
+                                            appService.setRegimen(switchRegimen.groupMembers[1].value.displayString);
                                         }
                                     }
                                     else if(switchRegimen.label == "ART Regimen"){
                                         if(switchRegimen.value != undefined)
                                         {
-                                            localStorage.setItem("Regimen",switchRegimen.value.value);
+                                            appService.setRegimen(switchRegimen.value.value);
                                         }
                                     }
                                 });
@@ -304,14 +302,12 @@ angular.module('bahmni.common.conceptSet')
                                     {
                                         if(element.value != undefined )
                                         {
-                                            localStorage.setItem("followUp",element.value);
-                                            var isDeactivated = false;
-                                            var isNotEmpty = JSON.parse(localStorage.getItem("Deactivate"));
-                                            isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
+                                            appService.setFollowupdate(element.value);
+                                            var isNotEmpty = appService.getDeactivated();
+                                            var isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
                                             if (isDeactivated == false)
                                             {
-                                            isTreamtentActive = true;
-                                            localStorage.setItem("activateSet",isTreamtentActive);
+                                                appService.setActive(true);
                                             }
                                             else
                                             {
@@ -418,10 +414,7 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
                 var init = function () {
-                    localStorage.setItem("Switch",false);
-                    localStorage.setItem("Subs",false);
-                    //localStorage.setItem("Regimen",undefined);
-                    localStorage.setItem("activateSet",false);
+                    appService.setActive(false);
                     // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
                     // Will refactor accordingly
                     if (conceptSetName == "HIV Treatment and Care Progress Template") {
