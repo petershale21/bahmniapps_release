@@ -308,9 +308,7 @@ angular.module('bahmni.clinical')
             }, true);
 
 
-/***********************************************************************
- * Add drug action that needs to be studied deeper
- */
+
             var UpdateOrderFromObsData =  function(){
                 let Regimen = appService.getRegimen();
 
@@ -391,19 +389,9 @@ angular.module('bahmni.clinical')
 
                 if(isActive == true)
                 {
-
-                    $scope.treatmentdrugNonCoded = regimen;
-                    $scope.treatment.uniformDosingType.dose = 1;
-                    $scope.treatment.uniformDosingType.doseUnits = "Tablet(s)"; 
-                    $scope.treatment.uniformDosingType.frequency = "Once a day";
-                    $scope.treatment.route = "Oral"; 
-                    $scope.treatmentfrequencyType =  "uniform"; 
-                    $scope.treatment.instructions =  "As directed" 
-                    $scope.treatment.duration = calculatedDays;//to be calculated  ---
-                    $scope.treatment.durationInDays = calculatedDays; //to be calculated ---
-                    $scope.treatment.durationUnit = "Day(s)"; 
-                    $scope.treatment.quantity = days * $scope.treatment.uniformDosingType.dose * 1;//to calculated ---
-                    $scope.treatment.quantityUnit =  "Tablet(s)"; 
+                    $scope.treatment.drugNameDisplay = regimen+" "+"("+$scope.treatment.drug.form+")";
+                    $scope.treatment.duration = calculatedDays;
+                    $scope.treatment.durationInDays = calculatedDays;
                     if(appService.getOrderstatus() != true )
                     {
                         $scope.add();
@@ -417,19 +405,9 @@ angular.module('bahmni.clinical')
                 }
                 if(appService.getDeactivated())
                 {
-                    $scope.treatment.drugNameDisplay = regimen; 
-                    $scope.treatmentdrugNonCoded = Regimen;
-                    $scope.treatment.uniformDosingType.dose = 1;
-                    $scope.treatment.uniformDosingType.doseUnits = "Tablet(s)"; 
-                    $scope.treatment.uniformDosingType.frequency = "Once a day";
-                    $scope.treatment.route = "Oral"; 
-                    $scope.treatmentfrequencyType =  "uniform"; 
-                    $scope.treatment.instructions =  "As directed" 
-                    $scope.treatment.duration = calculatedDays;//to be calculated  ---
-                    $scope.treatment.durationInDays = calculatedDays; //to be calculated ---
-                    $scope.treatment.durationUnit = "Day(s)"; 
-                    $scope.treatment.quantity = 0;//to calculated ---
-                    $scope.treatment.quantityUnit =  "Tablet(s)"; 
+                    $scope.treatment.drugNameDisplay = regimen+" "+"("+$scope.treatment.drug.form+")";
+                    $scope.treatment.duration = calculatedDays;
+                    $scope.treatment.durationInDays = calculatedDays; 
 
 
 
@@ -589,6 +567,7 @@ angular.module('bahmni.clinical')
                     $scope.treatment.quantityEnteredManually = false;
                 }
                 selectDrugFromDropdown(treatment.drug);
+                console.log(drugOrder);
             };
 
             $scope.$on("event:editDrugOrder", function (event, drugOrder, index) {
