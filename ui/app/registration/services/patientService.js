@@ -90,8 +90,7 @@ angular.module('bahmni.registration')
         };
 
         var get = function (uuid) {
-            return patientServiceStrategy.get(uuid);
-            
+            return patientServiceStrategy.get(uuid);   
         };
 
         var create = function (patient, jumpAccepted) {
