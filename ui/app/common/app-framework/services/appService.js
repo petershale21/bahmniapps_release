@@ -233,7 +233,7 @@ angular.module('bahmni.common.appFramework')
                 return appLoader.promise;
             };
 
-                        //**************Function to be used to set and get flags**************** */
+                        // **************Function to be used to set and get flags****************
                         let Regimen = '';
                         let isActiveSet = false; 
                         let isDeactivated = false;
