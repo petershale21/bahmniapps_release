@@ -58,7 +58,7 @@ jobs:
      
     - name: Push production code to release repo
       run: |
-        cd /home/runner/work/bahmniapps092dev/bahmniapps092devpps/ui/dist/
+        cd /home/runner/work/openmrs-module-bahmniapps/openmrs-module-bahmniapps/ui/dist/
         git init
         git branch -m autobuildmaster
         git add .
