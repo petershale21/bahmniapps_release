@@ -59,8 +59,8 @@ jobs:
     - name: Push production code to release repo
       run: |
         cd /home/runner/work/bahmniapps092dev/bahmniapps092dev/ui/dist/
-        git config --global user.email "mahaomolise92@gmail.com"
-        git config --global user.name "mahaomolise92"
+        git config --global user.email "seeisoleqelat@gmail.com"
+        git config --global user.name "leqela-prog"
         git init
         git branch -m autobuildmaster
         git add .
