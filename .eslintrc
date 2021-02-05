@@ -36,8 +36,7 @@ globals:
 rules:
   angular/controller-as: off
   angular/di: [error, array]
-  #indent: [error, 4]
-  indent: off
+  indent: [error, 4]
   quotes: off
 
   # The following are set to 'warn' level until they can be fixed
