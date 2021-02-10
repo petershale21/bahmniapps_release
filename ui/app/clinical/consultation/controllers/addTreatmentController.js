@@ -567,7 +567,7 @@ angular.module('bahmni.clinical')
                     $scope.treatment.quantityEnteredManually = false;
                 }
                 selectDrugFromDropdown(treatment.drug);
-                console.log(drugOrder);
+                
             };
 
             $scope.$on("event:editDrugOrder", function (event, drugOrder, index) {
