@@ -18,8 +18,13 @@
             </a>
 
 
-            <ul class="header-tabs consultation-tabs">
+            <ul class="header-tabs consultation-tabs"  ng-if="!isCurrentUrlShr()">
                 <li class="tab-item" ng-repeat="board in availableBoards track by $index" ng-class="{'tab-selected':board.isSelectedTab}">
+                    <a ng-click="showBoard($index)">{{ board | titleTranslate }}</a>
+                                    </li>
+                                </ul>
+                                <ul class="header-tabs consultation-tabs" ng-if="isCurrentUrlShr()">
+                                    <li class="tab-item" ng-repeat="board in sharedhealthrecordBoards track by $index" ng-class="{'tab-selected':board.isSelectedTab}">
                     <a ng-click="showBoard($index)">{{ board | titleTranslate }}</a>
                 </li>
             </ul>
@@ -27,7 +32,7 @@
             <button class="toggle-patient" ng-click="toggleControlPanel()" ng-class="{'shift': showControlPanel, 'hide-ipad': availableBoards }">
                 <i class="fa fa-bars fa-white fa-large"></i>
             </button>
-            <button class="confirm save-consultation" ng-show="availableBoards" single-click="save()" accesskey="{{'SAVE_ACCESS_KEY' | translate}}" ng-class="{'hideSaveText':availableBoards.length > 6}">
+            <button class="confirm save-consultation" ng-show="availableBoards" single-click="save()" accesskey="{{'SAVE_ACCESS_KEY' | translate}}" ng-class="{'hideSaveText':availableBoards.length > 6}" ng-if="!isCurrentUrlShr()">
                 <i class="fa fa-save"></i>
                 <span class="text" ng-bind-html="'CLINICAL_SAVE_TRANSLATION_KEY'| translate"></span>
             </button>
@@ -112,6 +117,11 @@
                     ng-click="openConsultation()"
                     accesskey="{{'CONSULTATION_SHORTCUT_KEY' | translate}}"
                     ng-bind-html="'CONSULTATION_TAB_KEY' | translate">
+                 </a>
+                 <a class="btn--left btn--success"
+                     ng-click="opensharedhealthrecord()"
+                     accesskey="{{'SHR_SHORTCUT_KEY ' | translate }}"
+                     ng-bind-html="'SHR_TAB_KEY' | translate">
                  </a>
                 <a class="btn--right btn--success " title="{{'OPEN_IN_NEW_WINDOW'|translate}}"
                    ng-if="visitHistory.activeVisit || retrospectiveEntry"

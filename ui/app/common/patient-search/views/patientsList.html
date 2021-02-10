@@ -83,6 +83,8 @@
                     <div class="patient-name">{{::patient.name}}</div>
                     <div class="patient-id">{{::patient.identifier}}</div>
                     <i class="ipd-indication fa fa-bed" ng-if="::(patient.hasBeenAdmitted===true||patient.hasBeenAdmitted==='true')"></i>
+                    <i class="ipd-indication fa fa-plus" ng-if="::(patient.CodedP===true||patient.CodedP==='true')"></i>
+                    <i class="vrl-indication fa fa-eyedropper" ng-if="::(patient.BloodDrawDue===true||patient.BloodDrawDue==='true')"></i>                    
                 </li>
             </ul>
         </resize>

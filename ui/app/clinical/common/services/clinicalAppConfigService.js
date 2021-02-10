@@ -25,6 +25,10 @@ angular.module('bahmni.clinical')
             return appService.getAppDescriptor().getExtensions("org.bahmni.clinical.consultation.board", "link");
         };
 
+        this.getAllSharedHealthRecordBoards = function () {
+            return appService.getAppDescriptor().getExtensions("org.bahmni.clinical.sharedhealthrecord.board", "link");
+        };   
+        
         this.getAllConceptSetExtensions = function (conceptSetGroupName) {
             return appService.getAppDescriptor().getExtensions("org.bahmni.clinical.conceptSetGroup." + conceptSetGroupName, "config");
         };
