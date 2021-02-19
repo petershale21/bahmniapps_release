@@ -307,7 +307,10 @@ angular.module('bahmni.clinical')
                 $scope.treatment.calculateQuantityAndUnit();
             }, true);
 
-
+            // this is to allow the method to be called with emit in the concept component
+            // $scope.$on("CallParentMethod", function(){
+            //     $scope.UpdateOrderFromObsData();
+            //  });
 
             var UpdateOrderFromObsData =  function(){
                 let Regimen = appService.getRegimen();

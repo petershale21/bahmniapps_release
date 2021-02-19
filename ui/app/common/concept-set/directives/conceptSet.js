@@ -316,6 +316,10 @@ angular.module('bahmni.common.conceptSet')
                                         }
                                     }
                                 })
+
+                                // $cope.$on("CallParentMethod", {}); // calling the UpdateOrderFromObsData()
+                                //UpdateOrderFromObsData() ******this is the function that adds treatments  
+
                             });
                             
                         } else {
