@@ -247,13 +247,13 @@ angular.module('bahmni.common.conceptSet')
 
                 var processConditions = function (flattenedObs, fields, disable, error, hide) {
 
-
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
                         var clonedObsInSameGroup;
                         flattenedObs.forEach(function (obs) {
                             if (clonedObsInSameGroup != false && obs.concept.name == field) {
                                 matchingObsArray.push(obs);
+                                
                                 clonedObsInSameGroup = true;
                             } else if (clonedObsInSameGroup && obs.concept.name != field) {
                                 clonedObsInSameGroup = false;
@@ -263,8 +263,6 @@ angular.module('bahmni.common.conceptSet')
                         if (!_.isEmpty(matchingObsArray)) {
                             setObservationState(matchingObsArray, disable, error, hide);
                             var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
-                            var daysDispenses = null;
-                            var isTreamtentActive = false;
 
                             $scope.$watch(function() { 
                                 matchingObsArray.forEach(switchRegimen => {
@@ -317,8 +315,7 @@ angular.module('bahmni.common.conceptSet')
                                     }
                                 })
 
-                                // $cope.$on("CallParentMethod", {}); // calling the UpdateOrderFromObsData()
-                                //UpdateOrderFromObsData() ******this is the function that adds treatments  
+
 
                             });
                             

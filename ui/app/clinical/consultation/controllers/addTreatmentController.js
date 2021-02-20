@@ -21,6 +21,7 @@ angular.module('bahmni.clinical')
             $scope.getFilteredOrderSets = function (searchTerm) {
                 if (searchTerm && searchTerm.length >= 3) {
                     orderSetService.getOrderSetsByQuery(searchTerm).then(function (response) {
+                        $scope.orderSets = response.data.results;
                         _.each($scope.orderSets, function (orderSet) {
                             _.each(orderSet.orderSetMembers, setUpOrderSetTransactionalData);
                         });
@@ -307,10 +308,6 @@ angular.module('bahmni.clinical')
                 $scope.treatment.calculateQuantityAndUnit();
             }, true);
 
-            // this is to allow the method to be called with emit in the concept component
-            // $scope.$on("CallParentMethod", function(){
-            //     $scope.UpdateOrderFromObsData();
-            //  });
 
             var UpdateOrderFromObsData =  function(){
                 let Regimen = appService.getRegimen();
