@@ -308,120 +308,79 @@ angular.module('bahmni.clinical')
                 $scope.treatment.calculateQuantityAndUnit();
             }, true);
 
-
-            var UpdateOrderFromObsData =  function(){
-                let Regimen = appService.getRegimen();
-
+            var addMultipleOrderSetsDrugsToMedicationTab = function (Regimen) {
                 if (Regimen && Regimen.length >= 3) {
                     orderSetService.getOrderSetsByQuery(Regimen).then(function (response) {
                         $scope.orderSets = response.data.results;
                         _.each($scope.orderSets, function (orderSet) {
                             _.each(orderSet.orderSetMembers, setUpOrderSetTransactionalData);
                         });
-
-                        if(_.isEmpty($scope.orderSets) == false)
-                        {
-                            
+                        if(_.isEmpty($scope.orderSets) == false){
                             $scope.treatments.pop();
-                            while($scope.orderSetTreatments.length > 0) {
+                            while($scope.orderSetTreatments.length > 0) 
                                 $scope.orderSetTreatments.pop();
-                            }
                             if(appService.getOrderstatus() != true )
-                            {
                                 $scope.addOrderSet($scope.orderSets[0]);
+                            else $scope.clearForm();
+                        }else $scope.removeOrderSet();
+                    }); 
+                }else $scope.orderSets = {};
+            }
+
+            var addsingleDrugsToMedicationsTab = function(Regimen){
+                if(Regimen && Regimen.length >= 3) {
+                    let selectItem = {
+                        elementId: "drug-name",
+                        elementType: "text",
+                        term: Regimen 
+                    }
+                    $scope.getDrugs(selectItem).then(
+                        (value) => {
+                            $scope.treatments.pop();
+                            try{
+                            let drug = value[0];
+                            let drugOder = {
+                                drug,
+                                label: value[0].name,
+                                value: value[0].name
                             }
-                            else
-                            {
-                                $scope.clearForm();
-                            }
-                            
-                        }
-                        else
-                        {
-                            
-                            $scope.removeOrderSet();
-                        }
-                       
+                            $scope.onSelect(drugOder);
+                            if($scope.orderSets.length == 0) 
+                                $scope.insertSingleOderDrugsToTreamtments(Regimen);
+                        }catch(e){ }
                     });
-                   
-                  }
-                else {
-                    $scope.orderSets = {};
                 }
-               
-                let selectItem = {
-                    elementId: "drug-name",
-                    elementType: "text",
-                    term: Regimen 
-                }
-      
-                $scope.getDrugs(selectItem).then(
-                    (value) => 
-                    {
-                        $scope.treatments.pop();
-                        try{
-                        let drug = value[0];
-                        let DrugOder = {
-                            drug,
-                            label: value[0].name,
-                            value: value[0].name
-                        }
-                        $scope.onSelect(DrugOder);
-                        if($scope.orderSets.length == 0)
-                        {
-                            $scope.TriggerAddIfFollowupDate(Regimen);
-                        }
-                    }catch(e){
-                        //console.log(e.message)
-                    }
-                    }
-                );
-        
+            }
 
-                
-                }
-            
+            var updateOrderFromObsData =  function(){
+                let Regimen = appService.getRegimen();
+                addMultipleOrderSetsDrugsToMedicationTab(Regimen);
+                addsingleDrugsToMedicationsTab(Regimen);
+            }
 
-            $scope.TriggerAddIfFollowupDate = function(regimen){
+            $scope.insertSingleOderDrugsToTreamtments = function(regimen){
                 var isActive = appService.getActive();
                 var days = new Date (appService.getFollowupdate()) -  $scope.treatment.encounterDate; 
                 var calculatedDays = Math.ceil(days / (1000 * 60 * 60 * 24)); 
-
-                if(isActive == true)
-                {
+                if(isActive == true) {
                     $scope.treatment.drugNameDisplay = regimen+" "+"("+$scope.treatment.drug.form+")";
                     $scope.treatment.duration = calculatedDays;
                     $scope.treatment.durationInDays = calculatedDays;
-                    if(appService.getOrderstatus() != true )
-                    {
+                    if(appService.getOrderstatus() != true ){
                         $scope.add();
                         scope.clearForm();
-                    }
-                    else
-                    {
-                        $scope.clearForm();
-                    }
+                    }else $scope.clearForm();
                     appService.setDeactivated(true);
                 }
-                if(appService.getDeactivated())
-                {
+                if(appService.getDeactivated()){
                     $scope.treatment.drugNameDisplay = regimen+" "+"("+$scope.treatment.drug.form+")";
                     $scope.treatment.duration = calculatedDays;
                     $scope.treatment.durationInDays = calculatedDays; 
-
-
-
-                    if(appService.getOrderstatus() != true)
-                    {
-                        
+                    if(appService.getOrderstatus() != true) { 
                         $scope.treatments.pop();
                         $scope.add();
                         scope.clearForm();
-                    }
-                    else{
-                        $scope.clearForm();
-                    }
-
+                    }else $scope.clearForm();
                     appService.setDeactivated(true);
                 }
             };
@@ -887,7 +846,7 @@ angular.module('bahmni.clinical')
                 mergeActiveAndScheduledWithDiscontinuedOrders();
 
                 $scope.treatmentConfig = treatmentConfig;// $scope.treatmentConfig used only in UI
-                UpdateOrderFromObsData();
+                updateOrderFromObsData();
             };
             init();
         }]);
