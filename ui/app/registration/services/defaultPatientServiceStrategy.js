@@ -38,7 +38,7 @@ angular.module('bahmni.registration')
 
         var importPatient = function (patient, config) {
             var defer = $q.defer();
-            var importPatientUrl = Bahmni.Common.Constants.bahmniSearchUrl + "/mpipatient" + "?patientEcid=" + patient.identifier;
+            var importPatientUrl = Bahmni.Common.Constants.bahmniSearchUrl + "/mpipatient" + "?patientEcid=" + patient.extraIdentifiers["ECID"];
 
             var onResults = function (result) {
                 defer.resolve(result);

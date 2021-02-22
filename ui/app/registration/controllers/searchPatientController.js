@@ -5,6 +5,8 @@ angular.module('bahmni.registration')
         'messagingService', '$translate', '$filter',
         function ($rootScope, $scope, $location, $window, spinner, patientService, appService, messagingService, $translate, $filter) {
             $scope.results = [];
+            var naturalOrderBy = window.naturalOrderBy;
+            $scope.direction = ['asc'];
             $scope.hieresults = [];
             $scope.option = {
                 selected: "local"
@@ -54,6 +56,24 @@ angular.module('bahmni.registration')
                     $scope.searchParameters.customAttribute.trim().length > 0 ||
                     $scope.searchParameters.programAttributeFieldValue.trim().length > 0 ||
                     $scope.searchParameters.nationalId.trim().length > 0;
+            };
+
+            $scope.sortPatient = function (param) {
+                var paramArray = param.split('.');
+                $scope.results = naturalOrderBy.orderBy($scope.results, [function (obj) {
+                    var tempObj = obj;
+                    paramArray.map(function (currentParam) {
+                        if (tempObj[currentParam]) {
+                            tempObj = tempObj[currentParam];
+                        }
+                    });
+                    return tempObj;
+                }], $scope.direction);
+                if ($scope.direction[0] == 'asc') {
+                    $scope.direction[0] = 'desc';
+                } else {
+                    $scope.direction[0] = 'asc';
+                }
             };
 
             var searchBasedOnQueryParameters = function (offset) {
@@ -118,7 +138,6 @@ angular.module('bahmni.registration')
                         ).then(function (response) {
                             mapExtraIdentifiers(response);
                             if (response.pageOfResults.length > 0) {
-                                console.log(response.pageOfResults);
                                 $scope.hieresults = response.pageOfResults;
                                 $scope.noResultsMessage = null;
                             } else {
@@ -421,7 +440,6 @@ angular.module('bahmni.registration')
                 var queryParams = {};
                 $scope.results = [];
                 $scope.hieresults = [];
-                console.log($scope.searchParameters);
                 if ($scope.searchParameters.name) {
                     queryParams.name = $scope.searchParameters.name;
                 }

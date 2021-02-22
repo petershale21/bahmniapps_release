@@ -108,64 +108,67 @@ angular.module('bahmni.clinical')
                         $scope.diseaseTemplates = diseaseTemplate;
                         $scope.sectionGroups = dashboardModel.getSections($scope.diseaseTemplates);
 
-                        getARTStartDate().then(function (result) {
-                                                        if (result[0].data.length > 0 || result[1].data.length > 0) {
-                                                            var today = Bahmni.Common.Util.DateUtil.now();
-                                                            var artStartDate = result[0].data.length > 0 ?
-                                                            Bahmni.Common.Util.DateUtil.parseServerDateToDate(result[0].data[0].valueAsString) : null;
-                                                            var lastDateSpecimenCollected = _.find(result[1].data, function (observation) {
-                                                                return observation.concept.name === "HIVTC, Viral Load Blood drawn date";
-                                                            });
-                                                            var treatmentSwitch = _.find(result[1].data, function (observation) {
-                                                                return observation.concept.name === "HIVTC, Treatment switched date";
-                                                            });
-                                                            var treatmentSubstitution = _.find(result[1].data, function (observation) {
-                                                                return observation.concept.name === "HIVTC, Treatment substituted date";
-                                                            });
-                                                            var treatmentSubstitutionDate = treatmentSubstitution ?
-                                                            Bahmni.Common.Util.DateUtil.parseServerDateToDate(treatmentSubstitution.valueAsString) : null;
-                                                            var treatmentSwitchDate = treatmentSwitch ?
-                                                            Bahmni.Common.Util.DateUtil.parseServerDateToDate(treatmentSwitch.valueAsString) : null;
-                                                            var referenceObject = determineReferenceDate(artStartDate, treatmentSubstitutionDate, treatmentSwitchDate);
-                                                            var dateDiffinDays = Bahmni.Common.Util.DateUtil.diffInDays(referenceObject.referenceDate, today);
-                                                            var dateDiffInMonthsFloor = Math.floor((dateDiffinDays * 12) / 365);
-                                                            var dateDiffinMonthsCeil = Math.ceil((dateDiffinDays * 12) / 365);
-                                                            // If the difference between today and the reference date does not exceed 12 months
-                                                            if (dateDiffinDays > 0 && dateDiffinDays <= 365) {
-                                                                // After every 6 months and if no blood was drawn 1 month prior to the encounter date
-                                                                if (dateDiffInMonthsFloor > 0 && dateDiffinMonthsCeil > 0) {
-                                                                    if (dateDiffInMonthsFloor % 6 == 0 || dateDiffinMonthsCeil % 6 == 0) {
-                                                                        if (lastDateSpecimenCollected) {
-                                                                            var recentBloodDrawDate = Bahmni.Common.Util.DateUtil.parseServerDateToDate(lastDateSpecimenCollected.valueAsString);
-                                                                            var recentVLBloodDrawDiff = Bahmni.Common.Util.DateUtil.diffInDays(recentBloodDrawDate, today);
-                                                                            if (recentVLBloodDrawDiff > 0 && !(recentVLBloodDrawDiff <= 31)) {
-                                                                                messagingService.showMessage('reminder', "Patient is due for 6 monthly Viral Load blood draw, since "
-                                                                                + referenceObject.referenceState);
-                                                                            }
-                                                                        } else {
-                                                                            messagingService.showMessage('reminder', "Patient is due for 6 monthly Viral Load blood draw, since "
-                                                                            + referenceObject.referenceState);
-                                                                        }
-                                                                    }
-                                                                }
-                                                            } else if (dateDiffinDays > 365) {
-                                                                // After every 12 months and if no blood was drawn 1 month prior to the encounter date
-                                                                if (dateDiffInMonthsFloor % 12 == 0 || dateDiffinMonthsCeil % 12 == 0) {
-                                                                    if (lastDateSpecimenCollected) {
-                                                                        var recentBloodDrawDate = Bahmni.Common.Util.DateUtil.parseServerDateToDate(lastDateSpecimenCollected.valueAsString);
-                                                                        var recentVLBloodDrawDiff = Bahmni.Common.Util.DateUtil.diffInDays(recentBloodDrawDate, today);
-                                                                        if (recentVLBloodDrawDiff > 0 && !(recentVLBloodDrawDiff <= 31)) {
-                                                                            messagingService.showMessage('reminder', "Patient is due for 12 monthly Viral Load blood draw, since "
-                                                                            + referenceObject.referenceState);
-                                                                        }
-                                                                    } else {
-                                                                        messagingService.showMessage('reminder', "Patient is due for 12 monthly Viral Load blood draw, since "
-                                                                        + referenceObject.referenceState);
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    });
+            getARTStartDate().then(function (result) {
+                                if (result[0].data.length > 0 || result[1].data.length > 0) {
+                                    var today = Bahmni.Common.Util.DateUtil.now();
+                                    var artStartDate = result[0].data.length > 0 ?
+                                    Bahmni.Common.Util.DateUtil.parseServerDateToDate(result[0].data[0].valueAsString) : null;
+                                    var lastDateSpecimenCollected = _.find(result[1].data, function (observation) {
+                                        return observation.concept.name === "HIVTC, Viral Load Blood drawn date";
+                                    });
+                                    var treatmentSwitch = _.find(result[1].data, function (observation) {
+                                        return observation.concept.name === "HIVTC, Treatment switched date";
+                                    });
+                                    var treatmentSubstitution = _.find(result[1].data, function (observation) {
+                                        return observation.concept.name === "HIVTC, Treatment substituted date";
+                                    });
+                                    var treatmentSubstitutionDate = treatmentSubstitution ?
+                                    Bahmni.Common.Util.DateUtil.parseServerDateToDate(treatmentSubstitution.valueAsString) : null;
+                                    var treatmentSwitchDate = treatmentSwitch ?
+                                    Bahmni.Common.Util.DateUtil.parseServerDateToDate(treatmentSwitch.valueAsString) : null;
+                                    var referenceObject = determineReferenceDate(artStartDate, treatmentSubstitutionDate, treatmentSwitchDate);
+                                    var dateDiffinDays = Bahmni.Common.Util.DateUtil.diffInDays(referenceObject.referenceDate, today);
+                                    var dateDiffInMonthsFloor = Math.floor((dateDiffinDays * 12) / 365);
+                                    var dateDiffinMonthsCeil = Math.ceil((dateDiffinDays * 12) / 365);
+                                    // If the difference between today and the reference date does not exceed 12 months
+                                    if (dateDiffinDays > 0 && dateDiffinDays <= 365) {
+                                        // After every 6 months and if no blood was drawn 1 month prior to the encounter date
+                                        if (dateDiffInMonthsFloor > 0 && dateDiffinMonthsCeil > 0) {
+                                            if (dateDiffInMonthsFloor % 6 == 0 || dateDiffinMonthsCeil % 6 == 0) {
+                                                if (lastDateSpecimenCollected) {
+                                                    var recentBloodDrawDate = Bahmni.Common.Util.DateUtil.parseServerDateToDate(lastDateSpecimenCollected.valueAsString);
+                                                    var recentVLBloodDrawDiff = Bahmni.Common.Util.DateUtil.diffInDays(recentBloodDrawDate, today);
+                                                    if (recentVLBloodDrawDiff > 0 && !(recentVLBloodDrawDiff <= 31)) {
+                                                        messagingService.showMessage('reminder', "Patient is due for 6 monthly Viral Load blood draw, since "
+                                                        + referenceObject.referenceState);
+                                                    }
+                                                } else {
+                                                    messagingService.showMessage('reminder', "Patient is due for 6 monthly Viral Load blood draw, since "
+                                                    + referenceObject.referenceState);
+                                                }
+                                            }
+                                        }
+                                    } else if (dateDiffinDays > 365) {
+                                        // After every 12 months and if no blood was drawn 1 month prior to the encounter date
+                                        if (dateDiffInMonthsFloor % 12 == 0 || dateDiffinMonthsCeil % 12 == 0) {
+                                            if (lastDateSpecimenCollected) {
+                                                var recentBloodDrawDate = Bahmni.Common.Util.DateUtil.parseServerDateToDate(lastDateSpecimenCollected.valueAsString);
+                                                var recentVLBloodDrawDiff = Bahmni.Common.Util.DateUtil.diffInDays(recentBloodDrawDate, today);
+                                                if (recentVLBloodDrawDiff > 0 && !(recentVLBloodDrawDiff <= 31)) {
+                                                    messagingService.showMessage('reminder', "Patient is due for 12 monthly Viral Load blood draw, since "
+                                                    + referenceObject.referenceState);
+                                                }
+                                            } else {
+                                                messagingService.showMessage('reminder', "Patient is due for 12 monthly Viral Load blood draw, since "
+                                                + referenceObject.referenceState);
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+
+
+                                                    
 
                     });
                 $scope.currentDashboardTemplateUrl = $state.current.views['dashboard-content'] ?

@@ -4,11 +4,11 @@ angular.module('bahmni.clinical').controller('ConsultationController',
     ['$scope', '$rootScope', '$state', '$location', '$translate', 'clinicalAppConfigService', 'diagnosisService', 'urlHelper', 'contextChangeHandler',
         'spinner', 'encounterService', 'messagingService', 'sessionService', 'retrospectiveEntryService', 'patientContext', '$q',
         'patientVisitHistoryService', '$stateParams', '$window', 'visitHistory', 'clinicalDashboardConfig', 'appService',
-        'ngDialog', '$filter', 'configurations', 'visitConfig', 'conditionsService', 'configurationService', 'auditLogService',
+        'ngDialog', '$filter', 'configurations', 'visitConfig', 'conditionsService', 'configurationService', 'auditLogService', 'patientService',
         function ($scope, $rootScope, $state, $location, $translate, clinicalAppConfigService, diagnosisService, urlHelper, contextChangeHandler,
                   spinner, encounterService, messagingService, sessionService, retrospectiveEntryService, patientContext, $q,
                   patientVisitHistoryService, $stateParams, $window, visitHistory, clinicalDashboardConfig, appService,
-                  ngDialog, $filter, configurations, visitConfig, conditionsService, configurationService, auditLogService) {
+                  ngDialog, $filter, configurations, visitConfig, conditionsService, configurationService, auditLogService, patientService) {
             var DateUtil = Bahmni.Common.Util.DateUtil;
             var getPreviousActiveCondition = Bahmni.Common.Domain.Conditions.getPreviousActiveCondition;
             $scope.togglePrintList = false;
@@ -85,9 +85,9 @@ angular.module('bahmni.clinical').controller('ConsultationController',
             };
 
             $scope.availableBoards = [];
-            
+
             $scope.sharedhealthrecordBoards = [];
-            
+
             $scope.configName = $stateParams.configName;
 
             $scope.getTitle = function (board) {
@@ -301,10 +301,25 @@ angular.module('bahmni.clinical').controller('ConsultationController',
                                 $scope.collapseControlPanel();
                                 switchToSharedHealthRecordTab();
                             };
-                            $scope.isCurrentUrlShr = function () {
-                                var currentUrl = $location.path();
-                                return _($location.path()).includes("/shared-health-record/search") ? true : false;
-                            };
+
+            $scope.generateAssignPatientId = function () {
+                spinner.forPromise(patientService.generateIdentifier()
+                    .then(function(result) {
+                        return result.data;
+                    }).then(function (assignedIdentifier) {
+                        return patientService.assignIdentifier($scope.patient.uuid, assignedIdentifier, "New HIV Program ID");
+                    }).then(function (assignedMessage) {
+                        var current = $state.current;
+                        var params = angular.copy($stateParams);
+                        $state.transitionTo(current, params, { reload: true, inherit: true, notify: true });
+                    }).catch(function (error) {
+                        messagingService.showMessage('error', error);
+                    }));
+            };
+            $scope.isCurrentUrlShr = function () {
+                var currentUrl = $location.path();
+                return _($location.path()).includes("/shared-health-record/search") ? true : false;
+            };
 
             var switchToConsultationTab = function () {
                 if ($scope.lastConsultationTabUrl.url) {
