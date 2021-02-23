@@ -346,7 +346,7 @@ angular.module('bahmni.clinical')
                             }
                             $scope.onSelect(drugOder);
                             if($scope.orderSets.length == 0) 
-                                $scope.insertSingleOderDrugsToTreamtments(Regimen);
+                                $scope.insertSingleOderDrugsToTreamtments(Regimen);y
                         }catch(e){ }
                     });
                 }
@@ -397,9 +397,7 @@ angular.module('bahmni.clinical')
                 $scope.treatment.setUniformDoseFraction();
                 var newDrugOrder = $scope.treatment;
                 setNonCodedDrugConcept($scope.treatment);
-
                 newDrugOrder.calculateEffectiveStopDate();
-
                 if (getConflictingDrugOrder(newDrugOrder)) {
                     if ($scope.alreadyActiveSimilarOrder.isNewOrderSet) {
                         $scope.conflictingIndex = _.findIndex($scope.orderSetTreatments, $scope.alreadyActiveSimilarOrder);
@@ -410,6 +408,7 @@ angular.module('bahmni.clinical')
                         template: 'consultation/views/treatmentSections/conflictingDrugOrderModal.html',
                         scope: $scope
                     });
+                    $scope.clearForm();
                     $scope.popupActive = true;
                     return;
                 }
@@ -842,10 +841,8 @@ angular.module('bahmni.clinical')
                 $scope.consultation.discontinuedDrugs = $scope.consultation.discontinuedDrugs || [];
                 $scope.consultation.drugOrdersWithUpdatedOrderAttributes = $scope.consultation.drugOrdersWithUpdatedOrderAttributes || {};
                 $scope.consultation.activeAndScheduledDrugOrders = getActiveDrugOrders(activeDrugOrders);
-
-                mergeActiveAndScheduledWithDiscontinuedOrders();
-
                 $scope.treatmentConfig = treatmentConfig;// $scope.treatmentConfig used only in UI
+                mergeActiveAndScheduledWithDiscontinuedOrders();
                 updateOrderFromObsData();
             };
             init();

@@ -476,40 +476,40 @@ angular.module('bahmni.common.conceptSet')
                     } else {
                         // Original function
                         $scope.$watch(function() { 
-                            if($scope.conceptSetName === "Tuberculosis Followup Template"){
-                                 try {
-                                    if($scope.observations[0].label != undefined){ 
-                                        $scope.observations[0].groupMembers.forEach((element) => {
-                                            if(element.label == "Clinical Notes"){
-                                                element.groupMembers.forEach((element) => {
-                                                 if(element.label ==  "TB Regimen"){
-                                                    if(element.selectedObs.Isoniazid
-                                                     &&element.selectedObs.Rifampicin 
-                                                     &&element.selectedObs.Ethambutol 
-                                                     &&element.selectedObs.Pyrazinamide
-                                                     &&!element.selectedObs.Streptomycin){
-                                                        appService.setRegimen("TB CAT 1");
-                                                        appService.setIsOrderRegimenInserted(true);  
-                                                    }
-                                                    else if(element.selectedObs.Isoniazid
-                                                        &&element.selectedObs.Rifampicin 
-                                                        &&element.selectedObs.Ethambutol 
-                                                        &&element.selectedObs.Pyrazinamide
-                                                        &&element.selectedObs.Streptomycin
-                                                        ){
-                                                        appService.setRegimen("TB CAT 2");
-                                                        appService.setIsOrderRegimenInserted(true);
-                                                    }
-                                                    else{
-                                                        appService.setIsOrderRegimenInserted(false);
-                                                    }
-                                                }
-                                                });
-                                            }
-                                        });
-                                    }
-                                 } catch (error) { }
-                            }
+                            // if($scope.conceptSetName === "Tuberculosis Followup Template"){
+                            //      try {
+                            //         if($scope.observations[0].label != undefined){ 
+                            //             $scope.observations[0].groupMembers.forEach((element) => {
+                            //                 if(element.label == "Clinical Notes"){
+                            //                     element.groupMembers.forEach((element) => {
+                            //                      if(element.label ==  "TB Regimen"){
+                            //                         if(element.selectedObs.Isoniazid
+                            //                          &&element.selectedObs.Rifampicin 
+                            //                          &&element.selectedObs.Ethambutol 
+                            //                          &&element.selectedObs.Pyrazinamide
+                            //                          &&!element.selectedObs.Streptomycin){
+                            //                             appService.setRegimen("TB CAT 1");
+                            //                             appService.setIsOrderRegimenInserted(true);  
+                            //                         }
+                            //                         else if(element.selectedObs.Isoniazid
+                            //                             &&element.selectedObs.Rifampicin 
+                            //                             &&element.selectedObs.Ethambutol 
+                            //                             &&element.selectedObs.Pyrazinamide
+                            //                             &&element.selectedObs.Streptomycin
+                            //                             ){
+                            //                             appService.setRegimen("TB CAT 2");
+                            //                             appService.setIsOrderRegimenInserted(true);
+                            //                         }
+                            //                         else{
+                            //                             appService.setIsOrderRegimenInserted(false);
+                            //                         }
+                            //                     }
+                            //                     });
+                            //                 }
+                            //             });
+                            //         }
+                            //      } catch (error) { }
+                            // }
                             if($scope.conceptSetName === "HIV Treatment and Care Intake Template"){
                                 try {
                                    if($scope.observations[0].label != undefined){ 
