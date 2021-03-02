@@ -1,0 +1,51 @@
+<div class="disposition-wrapper">
+    <div class="box disposition-tab">
+            <form name="searchByNameForm" class="simple-form-ui" ng-submit="findClinicalDocumentsForPatient()">
+                <article class="fl" style="margin-left:5px">
+                    <label for="name"><strong>From Date</strong></label>
+                    <input tabindex="4" id="from-date" date-converter type="date" max="{{::today}}" ng-model="fromDate" class="dashboard-date-picker" >
+                </article>
+                <article class="fl" style="margin-left:5px">
+                    <label for="name"><strong>To Date</strong></label>
+                    <input tabindex="5" id="to-date" date-converter type="date" max="{{::today}}" ng-model="toDate" class="dashboard-date-picker">
+                </article>
+
+                <article class="fl" style="margin-left:5px">
+                    <button tabindex="6" type="submit" ng-disabled="disableSearchButton()">Search</button>
+                </article>
+            </form>
+    </div>
+	
+    <div ng-if="resultsPresent()" class="registraition-search-results-container">
+        <table class="table">
+            <thead>
+            <tr>
+                <th><strong>Document ID</strong></th>
+                <th><strong>Document Name</strong></th>
+                <th><strong>Document Type</strong></th>
+				<th><strong>Encounter Date</strong></th>
+                <th><strong>Location</strong></th>
+                <th><strong>Provider</strong></th>                
+                <th><strong>Action</strong></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr ng-repeat="result in results">
+                <td>
+                    <a tabindex="{{ :: 7 + $index + 1 }}">
+                        {{::result.documentID || 'Not Assigned'}}
+                    </a>
+                </td>
+                <td>{{::result.documentName}}</td>
+                <td>{{::result.documentType}}</td>
+                <td>{{::result.encounterDate}}</td>
+                <td>{{::result.location}}</td>
+                <td>{{::result.providerID}}</td>
+                <td>
+                    <a tabindex="{{ :: 8 + $index + 1 }}" ng-click="retriveAndImportDocument(result)">Import</a>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

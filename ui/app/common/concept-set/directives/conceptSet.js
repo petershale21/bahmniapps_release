@@ -1,8 +1,8 @@
 'use strict';
 
 angular.module('bahmni.common.conceptSet')
-    .directive('conceptSet', ['contextChangeHandler', 'appService', 'observationsService', 'messagingService', 'conceptSetService', 'conceptSetUiConfigService', 'spinner',
-        function (contextChangeHandler, appService, observationsService, messagingService, conceptSetService, conceptSetUiConfigService, spinner) {
+    .directive('conceptSet', ['$rootScope', 'contextChangeHandler', 'appService', 'observationsService', 'messagingService', 'conceptSetService', 'conceptSetUiConfigService', 'spinner', '$q',
+        function ($timeout,contextChangeHandler, appService, observationsService, messagingService, conceptSetService, conceptSetUiConfigService, spinner, $q) {
             var controller = function ($scope) {
                 var conceptSetName = $scope.conceptSetName;
                 var ObservationUtil = Bahmni.Common.Obs.ObservationUtil;
@@ -10,13 +10,18 @@ angular.module('bahmni.common.conceptSet')
                 var observationMapper = new Bahmni.ConceptSet.ObservationMapper();
                 var validationHandler = $scope.validationHandler() || contextChangeHandler;
                 var id = "#" + $scope.sectionId;
+                var dateUtil = Bahmni.Common.Util.DateUtil;
 
                 $scope.atLeastOneValueIsSet = $scope.atLeastOneValueIsSet || false;
                 $scope.conceptSetRequired = false;
+                $scope.initialRegimen = "";
+                $scope.regimenSwitchSubstitute = [];
                 $scope.showTitleValue = $scope.showTitle();
                 $scope.numberOfVisits = conceptSetUIConfig[conceptSetName] && conceptSetUIConfig[conceptSetName].numberOfVisits ? conceptSetUIConfig[conceptSetName].numberOfVisits : null;
                 $scope.hideAbnormalButton = conceptSetUIConfig[conceptSetName] && conceptSetUIConfig[conceptSetName].hideAbnormalButton;
-
+       
+               
+               
                 var focusFirstObs = function () {
                     if ($scope.conceptSetFocused && $scope.rootObservation.groupMembers && $scope.rootObservation.groupMembers.length > 0) {
                         var firstObs = _.find($scope.rootObservation.groupMembers, function (obs) {
@@ -48,10 +53,26 @@ angular.module('bahmni.common.conceptSet')
 
                 var getDefaults = function () {
                     var conceptSetUI = appService.getAppDescriptor().getConfigValue("conceptSetUI");
+
                     if (!conceptSetUI || !conceptSetUI.defaults) {
                         return;
                     }
                     return conceptSetUI.defaults || {};
+                };
+
+                var getCodedAnswerWithDefaultAnswerStringRegimen = function (defaults, groupMember, currentRegimen) {
+                    var possibleAnswers = groupMember.possibleAnswers;
+                    var defaultAnswer = defaults[groupMember.concept.name];
+                    var defaultCodedAnswer;
+                    if (defaultAnswer instanceof Array) {
+                        defaultCodedAnswer = [];
+                        _.each(defaultAnswer, function (answer) {
+                            defaultCodedAnswer.push(_.find(possibleAnswers, {displayString: answer}));
+                        });
+                    } else {
+                        defaultCodedAnswer = _.find(possibleAnswers, {displayString: currentRegimen});
+                    }
+                    return defaultCodedAnswer;
                 };
 
                 var getCodedAnswerWithDefaultAnswerString = function (defaults, groupMember) {
@@ -74,6 +95,7 @@ angular.module('bahmni.common.conceptSet')
                         _.each(groupMembers, function (groupMember) {
                             var conceptFullName = groupMember.concept.name;
                             var present = _.includes(_.keys(defaults), conceptFullName);
+
                             if (present && groupMember.value == undefined) {
                                 if (groupMember.concept.dataType == "Coded") {
                                     setDefaultsForCodedObservations(groupMember, defaults);
@@ -93,6 +115,44 @@ angular.module('bahmni.common.conceptSet')
 
                 var setDefaultsForCodedObservations = function (observation, defaults) {
                     var defaultCodedAnswer = getCodedAnswerWithDefaultAnswerString(defaults, observation);
+
+                    // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
+                    // Will refactor accordingly
+                    var defaultCodedAnswerRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, $scope.initialRegimen);
+                    var defaultCodedAnswerSubsRegimen = "";
+                    var regimenSubstitutionValues = { observationDate: "" }, regimenSwitchValues = { observationDate: "" };
+
+                    if ($scope.regimenSwitchSubstitute && $scope.regimenSwitchSubstitute.length > 0) {
+                        _.each($scope.regimenSwitchSubstitute, function (treatmentAction) {
+                            if (treatmentAction.name == "HIVTC, Name of Substituted Regimen") {
+                                regimenSubstitutionValues = {
+                                    name: treatmentAction.name,
+                                    value: treatmentAction.value,
+                                    observationDate: treatmentAction.observationDateTime
+                                };
+                            } else { // Treatment switch date
+                                regimenSwitchValues = {
+                                    name: treatmentAction.name,
+                                    value: treatmentAction.value,
+                                    observationDate: treatmentAction.observationDateTime
+                                };
+                            }
+                        });
+
+                        if (regimenSubstitutionValues.observationDate && regimenSwitchValues.observationDate) {
+                            if (dateUtil.isBeforeDate(dateUtil.parseServerDateToDate(regimenSwitchValues.observationDate)
+                                , dateUtil.parseServerDateToDate(regimenSubstitutionValues.observationDate))) {
+                                defaultCodedAnswerSubsRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, regimenSubstitutionValues.value);
+                            } else {
+                                defaultCodedAnswerSubsRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, regimenSwitchValues.value);
+                            }
+                        } else if (regimenSubstitutionValues.observationDate && !regimenSwitchValues.observationDate) {
+                            defaultCodedAnswerSubsRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, regimenSubstitutionValues.value);
+                        } else if (regimenSwitchValues.observationDate && !regimenSubstitutionValues.observationDate) {
+                            defaultCodedAnswerSubsRegimen = getCodedAnswerWithDefaultAnswerStringRegimen(defaults, observation, regimenSwitchValues.value);
+                        }
+                    }
+
                     if (observation.isMultiSelect) {
                         if (!observation.hasValue()) {
                             _.each(defaultCodedAnswer, function (answer) {
@@ -100,7 +160,14 @@ angular.module('bahmni.common.conceptSet')
                             });
                         }
                     } else if (!(defaultCodedAnswer instanceof Array)) {
-                        observation.value = defaultCodedAnswer;
+                        // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
+                        if (defaultCodedAnswerRegimen && !defaultCodedAnswerSubsRegimen) {
+                            observation.value = defaultCodedAnswerRegimen;
+                        } else if (defaultCodedAnswerSubsRegimen) {
+                            observation.value = defaultCodedAnswerSubsRegimen;
+                        } else {
+                            observation.value = defaultCodedAnswer;
+                        }
                     }
                 };
 
@@ -140,7 +207,10 @@ angular.module('bahmni.common.conceptSet')
                 var clearFieldValuesOnDisabling = function (obs) {
                     obs.comment = undefined;
                     if (obs.value || obs.isBoolean) {
-                        obs.value = undefined;
+                        // Make ART Regimen an exception since we are pre-populating it to avoid data quality issues
+                        if (!(obs.concept.name == "HIVTC, ART Regimen")) {
+                            obs.value = undefined;
+                        }
                     } else if (obs.isMultiSelect) {
                         for (var key in obs.selectedObs) {
                             if (!obs.selectedObs[key].voided) {
@@ -150,14 +220,29 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
-                var setObservationState = function (obsArray, disable, error, hide) {
+                var setObservationState = function (obsArray, disable, error, hide, obsValue) {
                     if (!_.isEmpty(obsArray)) {
                         _.each(obsArray, function (obs) {
+                            // TODO: If initial regimen is not present for ART Regimen, always enable - Teboho
                             obs.disabled = disable || hide;
+                            if (obs.concept.name == "HIVTC, ART Regimen" && !$scope.initialRegimen) {
+                                obs.disabled = false;
+                            }
                             obs.error = error;
                             obs.hide = hide;
                             if (hide || obs.disabled) {
                                 clearFieldValuesOnDisabling(obs);
+                            }
+                            
+                            // TODO : Hack for assigning values to an obs - Teboho
+                            // Have generalize this code and remove explicit mention of the concept name i.e. HIVTC, ARV drugs supply duration maybe load obsValue with conceptName
+                            // NB: Currently only works for "Drug Supply duration" and "ARV drugs No. of days dispensed"
+                            if (obsValue && obs.concept.dataType == "Numeric" && obs.concept.name == "ARV drugs No. of days dispensed") {
+                                obs.value = obsValue;
+                            } else if (obsValue && obs.concept.dataType == "Coded" && obs.concept.name == "HIVTC, ARV drugs supply duration") {
+                                obs.value = _.find(obs.possibleAnswers, { displayString: obsValue });
+                            } else if (!obsValue && obs.concept.dataType == "Coded" && obs.concept.name == "HIVTC, ARV drugs supply duration") {
+                                obs.value = undefined;
                             }
                             if (obs.groupMembers) {
                                 _.each(obs.groupMembers, function (groupMember) {
@@ -169,21 +254,83 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
-                var processConditions = function (flattenedObs, fields, disable, error, hide) {
+        
+
+                var processConditions = function (flattenedObs, fields, disable, error, hide, assingvalue) {
+
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
+                        var obsValue;
                         var clonedObsInSameGroup;
                         flattenedObs.forEach(function (obs) {
-                            if (clonedObsInSameGroup != false && obs.concept.name == field) {
+                            if (clonedObsInSameGroup != false && obs.concept.name == field || (field.field && obs.concept.name == field.field)) {
                                 matchingObsArray.push(obs);
+                                
                                 clonedObsInSameGroup = true;
-                            } else if (clonedObsInSameGroup && obs.concept.name != field) {
+                                if (field.field) {
+                                    obsValue = field.fieldValue;
+                                }
+                            } else if (clonedObsInSameGroup && obs.concept.name != field || (field.field && obs.concept.name == field.field)) {
                                 clonedObsInSameGroup = false;
                             }
                         });
 
                         if (!_.isEmpty(matchingObsArray)) {
-                            setObservationState(matchingObsArray, disable, error, hide);
+                            setObservationState(matchingObsArray, disable, error, hide, obsValue);
+                            var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
+
+                            $scope.$watch(function() { 
+                                matchingObsArray.forEach(switchRegimen => {
+                                    if(switchRegimen.label =="Name of Regimen Switched to") 
+                                    {
+                                        if(switchRegimen.value != undefined)
+                                        {
+                                            appService.setRegimen(switchRegimen.value.displayString);
+                                        }
+    
+                                    }
+                                    else if(switchRegimen.label =="Treatment Substitution") 
+                                    {
+                                        if(switchRegimen.groupMembers[1].value != undefined)
+                                        {
+                                            appService.setRegimen(switchRegimen.groupMembers[1].value.displayString);
+                                        }
+                                    }
+                                    else if(switchRegimen.label == "ART Regimen"){
+                                        if(switchRegimen.value != undefined)
+                                        {
+                                            appService.setRegimen(switchRegimen.value.value);
+                                            appService.setIsOrderRegimenInserted(true); 
+                                        }
+                                        else appService.setIsOrderRegimenInserted(false); 
+                                    }
+                                });
+                                obsTreatment.forEach(element => {
+
+                                   
+                                    if(element.label == "Follow-up date")
+                                    {
+                                        if(element.value != undefined )
+                                        {
+                                            appService.setFollowupdate(element.value);
+                                            var isNotEmpty = appService.getDeactivated();
+                                            var isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
+                                            if (isDeactivated == false)
+                                            {
+                                                appService.setActive(true);
+                                            }
+                                            else
+                                            {
+                                                isDeactivated == false;
+                                            }
+                                        }
+                                    }
+                                })
+
+
+
+                            });
+                            
                         } else {
                             messagingService.showMessage("error", "No element found with name : " + field);
                         }
@@ -210,6 +357,7 @@ angular.module('bahmni.common.conceptSet')
                                 processConditions(flattenedObs, conditions.enable, false);
                                 processConditions(flattenedObs, conditions.show, false, undefined, false);
                                 processConditions(flattenedObs, conditions.hide, false, undefined, true);
+                                processConditions(flattenedObs, conditions.assignedValues, false, undefined, false, true);
                                 _.each(conditions.enable, function (subConditionConceptName) {
                                     var conditionFn = Bahmni.ConceptSet.FormConditions.rules && Bahmni.ConceptSet.FormConditions.rules[subConditionConceptName];
                                     if (conditionFn != null) {
@@ -280,28 +428,140 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
                 var init = function () {
-                    return conceptSetService.getConcept({
-                        name: conceptSetName,
-                        v: "bahmni"
-                    }).then(function (response) {
-                        $scope.conceptSet = response.data.results[0];
-                        $scope.rootObservation = $scope.conceptSet ? observationMapper.map($scope.observations, $scope.conceptSet, conceptSetUIConfig) : null;
-                        if ($scope.rootObservation) {
-                            $scope.rootObservation.conceptSetName = $scope.conceptSetName;
-                            focusFirstObs();
-                            updateObservationsOnRootScope();
-                            var groupMembers = getObservationsOfCurrentTemplate()[0].groupMembers;
-                            var defaults = getDefaults();
-                            addDummyImage();
-                            setDefaultsForGroupMembers(groupMembers, defaults);
-                            var observationsOfCurrentTemplate = getObservationsOfCurrentTemplate();
-                            updateFormConditions(observationsOfCurrentTemplate, $scope.rootObservation);
-                        } else {
-                            $scope.showEmptyConceptSetMessage = true;
-                        }
-                    }).catch(function (error) {
-                        messagingService.showMessage('error', error.message);
-                    });
+                    appService.setActive(false);
+                    // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
+                    // Will refactor accordingly
+                    if (conceptSetName == "HIV Treatment and Care Progress Template") {
+                        return $q.all([conceptSetService.getConcept({
+                            name: conceptSetName,
+                            v: "bahmni"
+                        }), observationsService.fetch($scope.patient.uuid, "HIVTC, ART Regimen", "initial"),
+                            observationsService.fetch($scope.patient.uuid, ["HIVTC, Name of Substituted Regimen",
+                                "HIVTC, Name of Switched Regimen"], "latest")]).then(function (response) {
+                                    if (response[1] && response[1].data.length > 0) {
+                                        $scope.initialRegimen = response[1].data[0].valueAsString;
+                                    }
+
+                                    _.each(response[2].data, function (regimen) {
+                                        $scope.regimenSwitchSubstitute.push({
+                                            name: regimen.concept.name,
+                                            value: regimen.valueAsString,
+                                            encounterDate: regimen.encounterDateTime,
+                                            observationDateTime: regimen.observationDateTime
+                                        });
+                                    });
+                                    
+
+                                    $scope.conceptSet = response[0].data.results[0];
+                                    $scope.rootObservation = $scope.conceptSet ? observationMapper.map($scope.observations, $scope.conceptSet, conceptSetUIConfig) : null;
+
+                                    if ($scope.rootObservation) {
+                                        $scope.rootObservation.conceptSetName = $scope.conceptSetName;
+                                        focusFirstObs();
+                                        updateObservationsOnRootScope();
+                                        var groupMembers = getObservationsOfCurrentTemplate()[0].groupMembers;
+                                        var defaults = getDefaults();
+                                        addDummyImage();
+
+                                        setDefaultsForGroupMembers(groupMembers, defaults);
+
+                                        var observationsOfCurrentTemplate = getObservationsOfCurrentTemplate();
+                                        updateFormConditions(observationsOfCurrentTemplate, $scope.rootObservation);
+                                    } else {
+                                        $scope.showEmptyConceptSetMessage = true;
+                                    }
+                                }).catch(function (error) {
+                                    messagingService.showMessage('error', error.message);
+                                });
+                    } else {
+                        // Original function
+                        $scope.$watch(function() { 
+                            // if($scope.conceptSetName === "Tuberculosis Followup Template"){
+                            //      try {
+                            //         if($scope.observations[0].label != undefined){ 
+                            //             $scope.observations[0].groupMembers.forEach((element) => {
+                            //                 if(element.label == "Clinical Notes"){
+                            //                     element.groupMembers.forEach((element) => {
+                            //                      if(element.label ==  "TB Regimen"){
+                            //                         if(element.selectedObs.Isoniazid
+                            //                          &&element.selectedObs.Rifampicin 
+                            //                          &&element.selectedObs.Ethambutol 
+                            //                          &&element.selectedObs.Pyrazinamide
+                            //                          &&!element.selectedObs.Streptomycin){
+                            //                             appService.setRegimen("TB CAT 1");
+                            //                             appService.setIsOrderRegimenInserted(true);  
+                            //                         }
+                            //                         else if(element.selectedObs.Isoniazid
+                            //                             &&element.selectedObs.Rifampicin 
+                            //                             &&element.selectedObs.Ethambutol 
+                            //                             &&element.selectedObs.Pyrazinamide
+                            //                             &&element.selectedObs.Streptomycin
+                            //                             ){
+                            //                             appService.setRegimen("TB CAT 2");
+                            //                             appService.setIsOrderRegimenInserted(true);
+                            //                         }
+                            //                         else{
+                            //                             appService.setIsOrderRegimenInserted(false);
+                            //                         }
+                            //                     }
+                            //                     });
+                            //                 }
+                            //             });
+                            //         }
+                            //      } catch (error) { }
+                            // }
+                            if($scope.conceptSetName === "HIV Treatment and Care Intake Template"){
+                                try {
+                                   if($scope.observations[0].label != undefined){ 
+                                       $scope.observations[0].groupMembers.forEach((element) => {
+                                            element.groupMembers.forEach((element) => {
+                                            if(element.label ==  "ART Regimen"){
+                                                if(element.value != undefined){
+                                                    appService.setRegimen( element.value.label);
+                                                    appService.setIsOrderRegimenInserted(true);
+                                                }else appService.setIsOrderRegimenInserted(true);
+                                            }else  appService.setIsOrderRegimenInserted(false);
+                                            if(element.label == "Follow-up date"){
+                                                if(element.value != undefined){
+                                                appService.setFollowupdate(element.value);
+                                                var isNotEmpty = appService.getDeactivated();
+                                                var isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
+                                                    if (isDeactivated == false)
+                                                       appService.setActive(true);
+                                                    else isDeactivated == false;
+                                                }}
+                                            });
+                                       });
+                                   }
+                                } catch (error) { }
+                           }
+                        });
+                        return conceptSetService.getConcept({
+                            name: conceptSetName,
+                            v: "bahmni"
+                        }).then(function (response) {
+                            $scope.conceptSet = response.data.results[0];
+                            $scope.rootObservation = $scope.conceptSet ? observationMapper.map($scope.observations, $scope.conceptSet, conceptSetUIConfig) : null;
+
+                            if ($scope.rootObservation) {
+                                $scope.rootObservation.conceptSetName = $scope.conceptSetName;
+                                focusFirstObs();
+                                updateObservationsOnRootScope();
+                                var groupMembers = getObservationsOfCurrentTemplate()[0].groupMembers;
+                                var defaults = getDefaults();
+                                addDummyImage();
+
+                                setDefaultsForGroupMembers(groupMembers, defaults);
+
+                                var observationsOfCurrentTemplate = getObservationsOfCurrentTemplate();
+                                updateFormConditions(observationsOfCurrentTemplate, $scope.rootObservation);
+                            } else {
+                                $scope.showEmptyConceptSetMessage = true;
+                            }
+                        }).catch(function (error) {
+                            messagingService.showMessage('error', error.message);
+                        });
+                    }
                 };
                 spinner.forPromise(init(), id);
 
