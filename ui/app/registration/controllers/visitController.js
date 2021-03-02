@@ -260,6 +260,7 @@ angular.module('bahmni.registration')
             };
 
             $scope.submit = function () {
+                console.log("esting Save button");
                 return validate().then(save).then(afterSave);
             };
 

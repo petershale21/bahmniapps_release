@@ -6,6 +6,7 @@ angular.module('bahmni.registration')
         function ($rootScope, $scope, $location, $window, spinner, patientService, appService, messagingService, $translate, $filter) {
             $scope.results = [];
             $scope.hieresults = [];
+            
             $scope.option = {
                 selected: "local"
             };
@@ -26,6 +27,10 @@ angular.module('bahmni.registration')
 
             $scope.showNationalId = function () {
                 return $scope.option.selected == "national" ? true : false;
+            };
+
+            $scope.showLocalId = function () {
+                return $scope.option.selected == "local" ? true : false;
             };
 
             $scope.extraIdentifierTypes = _.filter($rootScope.patientConfiguration.identifierTypes, function (identifierType) {
@@ -53,7 +58,8 @@ angular.module('bahmni.registration')
                     $scope.searchParameters.addressFieldValue.trim().length > 0 ||
                     $scope.searchParameters.customAttribute.trim().length > 0 ||
                     $scope.searchParameters.programAttributeFieldValue.trim().length > 0 ||
-                    $scope.searchParameters.nationalId.trim().length > 0;
+                    $scope.searchParameters.registrationNumber.trim().length > 0
+
             };
 
             var searchBasedOnQueryParameters = function (offset) {
@@ -101,6 +107,7 @@ angular.module('bahmni.registration')
                         return searchPromise;
                     } else if ($scope.option.selected == "national") {
                         $scope.searchParameters.gender = searchParameters.gender == "male" ? "M" : "F";
+                        searching = true;
                         var searchPromise = patientService.searchHIE(
                             $scope.searchParameters.name,
                             undefined,
@@ -117,15 +124,19 @@ angular.module('bahmni.registration')
                             $scope.personSearchResultsConfig.fields
                         ).then(function (response) {
                             mapExtraIdentifiers(response);
+
                             if (response.pageOfResults.length > 0) {
-                                console.log(response.pageOfResults);
                                 $scope.hieresults = response.pageOfResults;
                                 $scope.noResultsMessage = null;
+                                
                             } else {
-                                $scope.noResultsMessage = 'REGISTRATION_LABEL_COULD_NOT_FIND_PATIENT';
+                                $scope.noResultsMessage = 'testing not found message ';
                             }
                         });
+
+
                         spinner.forPromise(searchPromise);
+                        
                     }
                 }
             };
@@ -323,7 +334,7 @@ angular.module('bahmni.registration')
                 $scope.hieresults = [];
 
                 var patientIdentifier = $scope.searchParameters.registrationNumber;
-
+                debugger;
                 $location.search({
                     registrationNumber: $scope.searchParameters.registrationNumber,
                     programAttributeFieldName: $scope.programAttributesSearchConfig.field,
@@ -332,7 +343,6 @@ angular.module('bahmni.registration')
                     addressSearchResultsConfig: $scope.addressSearchResultsConfig.fields,
                     personSearchResultsConfig: $scope.personSearchResultsConfig.fields
                 });
-
                 if ($scope.option.selected == "local") {
                     var searchPromise = patientService.search(undefined, patientIdentifier, $scope.addressSearchConfig.field,
                         undefined, undefined, undefined, $scope.customAttributesSearchConfig.fields,
@@ -421,7 +431,6 @@ angular.module('bahmni.registration')
                 var queryParams = {};
                 $scope.results = [];
                 $scope.hieresults = [];
-                console.log($scope.searchParameters);
                 if ($scope.searchParameters.name) {
                     queryParams.name = $scope.searchParameters.name;
                 }
