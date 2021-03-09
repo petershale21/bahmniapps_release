@@ -1,6 +1,9 @@
 {
     "CONSULTATION_TAB_KEY": "<u>C</u>onsultation",
     "CONSULTATION_SHORTCUT_KEY": "c",
+    "SHR_TAB_KEY": "<u>B</u>ukana",
+    "UIDGEN_TAB_KEY":"<u>G</u>enerate ID",
+    "SHR_SHORTCUT_KEY": "b",
     "NO_ACTIVE_PASSIVE_PROGRAMS_MESSAGE": "No active/inactive programs for this patient.",
     "NO_TREATMENTS_MESSAGE": "No treatments for this patient.",
     "NO_ADMISSION_DETAILS_MESSAGE": "No Admission Details for this patient.",

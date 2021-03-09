@@ -34,5 +34,22 @@
             </div>
         </li>
     </ul>
+    	
+        
+
+<ul>
+    <li>
+        <div class="message-container error-message-container" ng-if="isReminderMessagePresent()">
+            <div class="message-text">
+                                    <div ng-repeat="reminder in messages.reminder track by $index">
+                                            <div class="msg">{{ reminder.value | translate}}</div>
+                                    </div>
+                <div class="button-wrappper clearfix">
+                    <button type="button" ng-click="hideMessage('reminder')" class="show-btn fr">{{ 'MESSAGE_DIALOG_OPTION_OKAY' | translate }}</button>
+                </div>
+            </div>
+        </div>
+    </li>
+</ul>   
 </div>
 
