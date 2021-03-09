@@ -5,12 +5,13 @@ angular.module('bahmni.registration')
         var openmrsUrl = Bahmni.Registration.Constants.openmrsUrl;
         var baseOpenMRSRESTURL = Bahmni.Registration.Constants.baseOpenMRSRESTURL;
 
-        var search = function (query, identifier, addressFieldName, addressFieldValue, customAttributeValue,
+        var search = function (query, surname, identifier, addressFieldName,  addressFieldValue, customAttributeValue,
                                offset, customAttributeFields, programAttributeFieldName, programAttributeFieldValue, addressSearchResultsConfig,
                                patientSearchResultsConfig, filterOnAllIdentifiers) {
             var config = {
                 params: {
-                    q: query,
+                    q: query + " " + surname,
+                    surname: surname,
                     identifier: identifier,
                     s: "byIdOrNameOrVillage",
                     addressFieldName: addressFieldName,
@@ -29,13 +30,14 @@ angular.module('bahmni.registration')
             };
             return patientServiceStrategy.search(config);
         };
-        var searchHIE = function (query, identifier, nationalId, gender, addressFieldName, addressFieldValue, customAttributeValue,
+        var searchHIE = function (query, surname, identifier, nationalId, gender, addressFieldName, addressFieldValue, customAttributeValue,
                                offset, customAttributeFields, programAttributeFieldName, programAttributeFieldValue, addressSearchResultsConfig,
                                patientSearchResultsConfig, filterOnAllIdentifiers) {
 
             var config = {
                 params: {
-                    q: query,
+                    q: query + " " + surname,
+                    surname: surname,
                     identifier: identifier,
                     nationalId: nationalId,
                     gender: gender,
