@@ -24,4 +24,8 @@ angular.module('bahmni.common.uiHelper')
             $scope.isInfoMessagePresent = function () {
                 return $scope.messages.info.length > 0;
             };
+            	
+            $scope.isReminderMessagePresent = function () {
+                return $scope.messages.reminder.length > 0;
+            };
         }]);

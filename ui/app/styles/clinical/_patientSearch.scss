@@ -73,6 +73,29 @@
     border-radius: 0 5px 0 0;
     font-size: 18px;
   }
+
+	
+  i.vrl-indication{
+        position: absolute;
+        right: 0;
+        top: 0;
+        background: #FF0000;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 0 5px 0 0;
+        font-size: 18px;
+      }
+      i.codep-indication{
+        position: absolute;
+        right: 0;
+        top: 0;
+        background: $bahmniPrimaryBtnColorHover;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 0 5px 0 0;
+        font-size: 18px;
+      }  
+
   .ward-details-container{
     table{
       &.patient-list-table{

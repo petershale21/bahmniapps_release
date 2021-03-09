@@ -1,0 +1,69 @@
+# This workflow will do a clean install of node dependencies, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: Autobuild CI
+
+on:
+  push:
+    branches: [ release-0.92 ]
+  pull_request:
+    branches: [ release-0.92 ]
+defaults:
+  run:
+    working-directory: ui
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Use Node.js 10.x
+      uses: actions/setup-node@v1
+      with:
+        node-version: 10.x
+        
+    - name: Use ruby 2.7
+      uses: actions/setup-ruby@v1
+      with:
+        ruby-version: '2.7'
+   
+    - name: Get module Bower
+      run: npm install -g bower
+      
+    - name: Get module Grunt
+      run: npm install -g grunt
+      
+    - name: Get module required for sass (scss)
+      run: gem install compass
+      
+    - name: Get node dependencies
+      run: npm install
+      
+    - name: Set up UI component/dependencies
+      run: bower install
+      
+    - name: Build the application (into dist folder) using Grunt
+      run: grunt --force
+      
+    - name: List output files
+      run: ls
+
+    - name: List dist files
+      run: cd dist && ls
+      
+    - name: Where am I
+      run: pwd
+     
+    - name: Push production code to release repo
+      run: |
+        cd /home/runner/work/bahmniapps092dev/bahmniapps092dev/ui/dist/
+        git config --global user.email "seeisoleqelat@gmail.com"
+        git config --global user.name "leqela-prog"
+        git init
+        git branch -m autobuildmaster
+        git add .
+        git commit -m "release changes to Bahmni apps production code"
+        git remote add github https://${{ secrets.BAHMNI_APPS_092 }}@github.com/eRegister/bahmniapps092dev.git
+        git push -f github autobuildmaster 
