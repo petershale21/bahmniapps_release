@@ -136,8 +136,8 @@ angular.module('bahmni.registration')
             var executeRule = function (ruleFunction) {
                 var attributesShowOrHideMap = ruleFunction($scope.patient);
                 var patientAttributesSections = $rootScope.patientConfiguration.getPatientAttributesSections();
-                showSections(attributesShowOrHideMap.show, patientAttributesSections);
-                hideSections(attributesShowOrHideMap.hide, patientAttributesSections);
+                // showSections(attributesShowOrHideMap.show, patientAttributesSections);
+                // hideSections(attributesShowOrHideMap.hide, patientAttributesSections);
             };
 
             $scope.handleUpdate = function (attribute) {
@@ -146,6 +146,49 @@ angular.module('bahmni.registration')
                     executeRule(ruleFunction);
                 }
             };
+            var obj = [];
+            var obj2 = [];
+            var obj3 = $scope.patient.extraIdentifiers;
+
+            $scope.Ismale =  function() {
+
+                obj2 = [];
+                obj = [];
+
+                obj3.forEach(function(item){
+                    obj.push(item);
+                });
+                $scope.patient.extraIdentifiers = [];
+                obj.forEach(function (item) {
+                    $scope.patient.extraIdentifiers.push(item);
+                    obj2.push(item);
+                  });
+
+                if($scope.patient.gender == 'M'){                                      
+                    if($scope.patient.extraIdentifiers[0].identifierType.name == 'ANC Program ID'){
+                        $scope.patient.extraIdentifiers.shift();
+                        $scope.patient.extraIdentifiers.splice(3,1); 
+                }
+                }
+                else if($scope.patient.gender == 'F'){
+                    if($scope.patient.extraIdentifiers[0].identifierType.name != 'ANC Program ID'){
+                        $scope.patient.extraIdentifiers = [];
+                        obj2.forEach(function (item) {
+                            $scope.patient.extraIdentifiers.push(item);
+                          });
+                    }
+                        
+                }
+                    
+
+            }
+
+
+            $scope.isChild = function() {
+                console.log($scope.patient.age.years);
+                // hideSections($scope.patient.extraIdentifiers[0]);
+                console.log($scope.patient.extraIdentifiers[0]);
+            }
 
             var executeShowOrHideRules = function () {
                 _.each(Bahmni.Registration.AttributesConditions.rules, function (rule) {
@@ -184,6 +227,7 @@ angular.module('bahmni.registration')
                     $scope.patient.dead = true;
                 }
             };
+
 
             $scope.disableIsDead = function () {
                 return ($scope.patient.causeOfDeath || $scope.patient.deathDate) && $scope.patient.dead;

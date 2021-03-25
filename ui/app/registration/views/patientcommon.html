@@ -108,9 +108,9 @@
                             class="asterick">*</span></label>
                 </div>
 
-                <div class="field-value">
+                <div class="field-value" ng-click = "Ismale()">
                     <select id="gender" ng-model="patient.gender" required="required" title="{{ 'REGISTRATION_LABEL_SELECT_GENDER'|translate }}"
-                            ng-options="genderMap[genderCode] for genderCode in genderCodes track by genderCode" ng-change="handleUpdate('gender')">
+                            ng-options="genderMap[genderCode] for genderCode in genderCodes track by genderCode"  ng-change="handleUpdate('gender'); Ismale()">
                         <option value="">{{ ::'REGISTRATION_LABEL_SELECT_GENDER' | translate}}</option>
                     </select>
                     <!--<div class="selectGender">
