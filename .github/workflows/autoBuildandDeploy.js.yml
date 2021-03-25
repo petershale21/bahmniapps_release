@@ -1,11 +1,11 @@
 # This workflow will do a clean install of bahmniapps dependencies, node dependencies, and build the bahmniapps source code
-# This workflow will be triggered only when there's a push to the master branch of the repo
+# This workflow will be triggered only when there's a push to the main branch of the repo
 # i.e. when a pull request is merged or when a commit is made directly to the master branch
 name: Autobuild CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
 
 defaults:
   run:
