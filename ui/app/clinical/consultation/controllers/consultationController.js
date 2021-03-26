@@ -491,7 +491,7 @@ angular.module('bahmni.clinical').controller('ConsultationController',
             $scope.save = function (toStateConfig) {
                 let currentPath = $location.absUrl();
                 RedirectToMedicationFromObsForms(currentPath);
-                //appService.setOrderstatus(true);
+                appService.setOrderstatus(true);
                 if (!isFormValid()) {
                     $scope.$parent.$parent.$broadcast("event:errorsOnForm");
                     return $q.when({});
