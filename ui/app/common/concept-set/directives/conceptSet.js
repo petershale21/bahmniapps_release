@@ -257,10 +257,6 @@ angular.module('bahmni.common.conceptSet')
         
 
                 var processConditions = function (flattenedObs, fields, disable, error, hide, assingvalue) {
-                    
-                    // if($scope.conceptSetName=="ANC, ANC Program"){
-                    //     console.log($scope);
-                    // }
 
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
@@ -282,15 +278,6 @@ angular.module('bahmni.common.conceptSet')
                         if (!_.isEmpty(matchingObsArray)) {
                             setObservationState(matchingObsArray, disable, error, hide, obsValue);
                             var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
-
-                            // if($scope.conceptSetName=="ANC, ANC Program"){
-                            //     console.log($scope);
-                            // }
-                        //     $scope.$watch(function() { 
-                        //     matchingObsArray.forEach(test => {
-                        //          console.log(test.groupMembers);
-                        //     });
-                        // });
 
                             //hack to check changes on ART treatment followup form to autopopulate medication from obs to medication tab --pheko---phenduka
                             $scope.$watch(function() { 
@@ -443,6 +430,41 @@ angular.module('bahmni.common.conceptSet')
                 };
                 var init = function () {
                     appService.setActive(false);
+
+                            // Hack to autocalculate estimated date of delivery (EDD) once last menstrual period entered --- Pheko
+                            var edd;
+                            if($scope.conceptSetName=="ANC, ANC Program"){
+                                $scope.$watch(function() { 
+                                try {
+                                    if($scope.observations[0].label != undefined){ 
+                                        $scope.observations[0].groupMembers.forEach((element) => {
+                                             element.groupMembers.forEach((element) => {
+                                                 if(element.label== "Obstetric History"){
+                                                     if(element.groupMembers[4].value != undefined){
+                                                         edd=element.groupMembers[4].value;
+                                                         var dt = new Date(edd);
+                                                         dt.setMonth( dt.getMonth() + 9);
+                                                         var day= '' + dt.getDate();
+                                                         var month='' + (dt.getMonth()+1);
+                                                         var year='' + dt.getFullYear();
+                                                         if (month.length < 2) {
+                                                            month = '0' + month;
+                                                         }
+                                                         if (day.length < 2){
+                                                            day = '0' + day;
+                                                         }
+                                                        
+                                                         var finaldate= year+"-"+month+"-"+day;
+                                                         element.groupMembers[5].value=finaldate;
+                                                     }
+                                                }
+                                                 
+                                             });
+                                        });
+                                    }
+                                 } catch (error) { }
+                            });}
+
                     // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
                     // Will refactor accordingly
                     if (conceptSetName == "HIV Treatment and Care Progress Template") {
@@ -524,27 +546,6 @@ angular.module('bahmni.common.conceptSet')
                             //         }
                             //      } catch (error) { }
                             // }
-                            var edd;
-                            if($scope.conceptSetName=="ANC, ANC Program"){
-                                try {
-                                    if($scope.observations[0].label != undefined){ 
-                                        $scope.observations[0].groupMembers.forEach((element) => {
-                                             element.groupMembers.forEach((element) => {
-                                                 if(element.label== "Obstetric History"){
-                                                     if(element.groupMembers[4].value != undefined){
-                                                         edd=element.groupMembers[4].value;
-                                                         var dt = new Date(edd);
-                                                         dt.setMonth( dt.getMonth() + 9);
-                                                          console.log(dt);
-                                                         //element.groupMembers[5].value=dt;
-                                                     }
-                                                }
-                                                 
-                                             });
-                                        });
-                                    }
-                                 } catch (error) { }
-                            }
                             if($scope.conceptSetName === "HIV Treatment and Care Intake Template"){
                                 try {
                                    if($scope.observations[0].label != undefined){ 
