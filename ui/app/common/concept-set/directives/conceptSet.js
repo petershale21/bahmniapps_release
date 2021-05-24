@@ -257,6 +257,10 @@ angular.module('bahmni.common.conceptSet')
         
 
                 var processConditions = function (flattenedObs, fields, disable, error, hide, assingvalue) {
+                    
+                    // if($scope.conceptSetName=="ANC, ANC Program"){
+                    //     console.log($scope);
+                    // }
 
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
@@ -279,6 +283,16 @@ angular.module('bahmni.common.conceptSet')
                             setObservationState(matchingObsArray, disable, error, hide, obsValue);
                             var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
 
+                            // if($scope.conceptSetName=="ANC, ANC Program"){
+                            //     console.log($scope);
+                            // }
+                        //     $scope.$watch(function() { 
+                        //     matchingObsArray.forEach(test => {
+                        //          console.log(test.groupMembers);
+                        //     });
+                        // });
+
+                            //hack to check changes on ART treatment followup form to autopopulate medication from obs to medication tab --pheko---phenduka
                             $scope.$watch(function() { 
                                 matchingObsArray.forEach(switchRegimen => {
                                     if(switchRegimen.label =="Name of Regimen Switched to") 
@@ -510,6 +524,27 @@ angular.module('bahmni.common.conceptSet')
                             //         }
                             //      } catch (error) { }
                             // }
+                            var edd;
+                            if($scope.conceptSetName=="ANC, ANC Program"){
+                                try {
+                                    if($scope.observations[0].label != undefined){ 
+                                        $scope.observations[0].groupMembers.forEach((element) => {
+                                             element.groupMembers.forEach((element) => {
+                                                 if(element.label== "Obstetric History"){
+                                                     if(element.groupMembers[4].value != undefined){
+                                                         edd=element.groupMembers[4].value;
+                                                         var dt = new Date(edd);
+                                                         dt.setMonth( dt.getMonth() + 9);
+                                                          console.log(dt);
+                                                         //element.groupMembers[5].value=dt;
+                                                     }
+                                                }
+                                                 
+                                             });
+                                        });
+                                    }
+                                 } catch (error) { }
+                            }
                             if($scope.conceptSetName === "HIV Treatment and Care Intake Template"){
                                 try {
                                    if($scope.observations[0].label != undefined){ 

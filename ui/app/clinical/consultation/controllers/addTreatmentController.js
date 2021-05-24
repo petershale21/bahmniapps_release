@@ -372,9 +372,6 @@ angular.module('bahmni.clinical')
                     $scope.treatment.quantity=calculatedDays;
                     $scope.treatment.uniformDosingType.dose=1;
                     $scope.treatment.uniformDosingType.frequency="Once a day";
-                    console.log("In one");
-                    console.log($scope.treatment);
-                    
 
                     if(appService.getOrderstatus() != true ){
                         $scope.add();
@@ -391,8 +388,6 @@ angular.module('bahmni.clinical')
                     $scope.treatment.route="Oral";
                     $scope.treatment.uniformDosingType.dose=1;
                     $scope.treatment.uniformDosingType.frequency="Once a day";
-                    console.log("In two");
-                    console.log($scope.treatment);
 
                     if(appService.getOrderstatus() != true) { 
                         $scope.treatments.pop();
