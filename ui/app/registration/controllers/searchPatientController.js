@@ -61,7 +61,7 @@ angular.module('bahmni.registration')
                     $scope.searchParameters.addressFieldValue.trim().length > 0 ||
                     $scope.searchParameters.customAttribute.trim().length > 0 ||
                     $scope.searchParameters.programAttributeFieldValue.trim().length > 0 ||
-                    $scope.searchParameters.registrationNumber.trim().length > 0
+                    $scope.searchParameters.nationalId.trim().length > 0
 
             };
 
@@ -104,8 +104,7 @@ angular.module('bahmni.registration')
                     if ($scope.option.selected == "local") {
                         searching = true;
                         var searchPromise = patientService.search(
-                            $scope.searchParameters.name,
-                            $scope.searchParameters.last_name,                            
+                            $scope.searchParameters.name + " "+  $scope.searchParameters.last_name,                            
                             undefined,
                             $scope.addressSearchConfig.field,
                             $scope.searchParameters.addressFieldValue,
