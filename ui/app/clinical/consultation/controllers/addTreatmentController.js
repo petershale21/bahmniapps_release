@@ -360,6 +360,7 @@ angular.module('bahmni.clinical')
 
             $scope.insertSingleOderDrugsToTreamtments = function(regimen){
                 var isActive = appService.getActive();
+                console.log(isActive);
                 var days = new Date (appService.getFollowupdate()) -  $scope.treatment.encounterDate; 
                 var calculatedDays = Math.ceil(days / (1000 * 60 * 60 * 24)); 
                 if(isActive == true) {
