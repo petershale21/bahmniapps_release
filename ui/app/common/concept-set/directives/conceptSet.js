@@ -553,7 +553,8 @@ angular.module('bahmni.common.conceptSet')
                                                         appService.setIsOrderRegimenInserted(true); 
                                                     }
                                                     if(element.selectedObs.RH){
-                                                        appService.setRegimen("RH");
+                                                        appService.setRegimen("RH-");
+                                                        console.log(element.selectedObs);
                                                         appService.setIsOrderRegimenInserted(true); 
                                                     }
                                                     if(element.selectedObs.RHZ){
