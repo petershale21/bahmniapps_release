@@ -47,7 +47,34 @@ angular.module('bahmni.clinical')
             };
 
             var concatObservationForms = function () {
+
                 $scope.allTemplates = getSelectedObsTemplate(allConceptSections);
+                _.each($scope.allTemplates, function (obsforms) {
+                    
+                    // a hack to hide some forms for male patients--- pheko khahliso---
+                    if($scope.context.patient.gender=='M' && (obsforms.conceptName=="Exposed Infant Monitoring Template")){
+                        obsforms.alwaysShow=false;
+                    }
+                    if($scope.context.patient.gender=='M' && (obsforms.conceptName=="under5 Register")){
+                        obsforms.alwaysShow=false;
+                        // obsforms.added=false;
+                        // obsforms.isLoaded=false;
+                        // obsforms.open=false;
+                    }
+                    if($scope.context.patient.gender=='M' && (obsforms.conceptName=="PostNatal Care Register")){
+                        obsforms.alwaysShow=false;
+                    }
+                    if($scope.context.patient.gender=='M' && (obsforms.conceptName=="Family Planning Register")){
+                        obsforms.alwaysShow=false;
+                    }
+                    if($scope.context.patient.gender=='M' && (obsforms.conceptName=="ANC, ANC Program")){
+                        obsforms.alwaysShow=false;
+                    }
+                    if($scope.context.patient.gender=='M' && (obsforms.conceptName=="HIV Exposed Infant Register")){
+                        obsforms.alwaysShow=false;
+                    }
+                });
+
                 $scope.uniqueTemplates = _.uniqBy($scope.allTemplates, 'label');
                 $scope.allTemplates = $scope.allTemplates.concat($scope.consultation.observationForms);
                 if ($scope.consultation.selectedObsTemplate.length == 0) {
