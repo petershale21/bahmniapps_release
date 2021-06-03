@@ -478,27 +478,14 @@ angular.module('bahmni.clinical').controller('ConsultationController',
                 $scope.$parent.consultation.postSaveHandler.fire();
                 $scope.dashboardDirty = true;
             };
-            let RedirectToMedicationFromObsForms = function (currentPath) { 
-                if(currentPath.includes('concept-set-group/observations'))
-                {
-                    let IndexOfObervationPage = currentPath.indexOf('concept');
-                    let newMedicationPath = currentPath.substring(0, IndexOfObervationPage);
-                    newMedicationPath = newMedicationPath +'treatment?tabConfigName=allMedicationTabConfig';
-                    window.location.assign(newMedicationPath);
-                }
-             };
 
             $scope.save = function (toStateConfig) {
-                let currentPath = $location.absUrl();
-                RedirectToMedicationFromObsForms(currentPath);
                 appService.setOrderstatus(true);
                 if (!isFormValid()) {
                     $scope.$parent.$parent.$broadcast("event:errorsOnForm");
                     return $q.when({});
                 }
-                return spinner.forPromise(new Promise(function(resolve, reject) {
-                    setTimeout(resolve, 2000);
-                  }).then(function() {spinner.forPromise($q.all([preSavePromise(), encounterService.getEncounterType($state.params.programUuid, sessionService.getLoginLocationUuid())]).then(function (results) {
+                return spinner.forPromise($q.all([preSavePromise(), encounterService.getEncounterType($state.params.programUuid, sessionService.getLoginLocationUuid())]).then(function (results) {
                     var encounterData = results[0];
                     encounterData.encounterTypeUuid = results[1].uuid;
                     var params = angular.copy($state.params);
@@ -536,8 +523,6 @@ angular.module('bahmni.clinical').controller('ConsultationController',
                             var message = Bahmni.Clinical.Error.translate(error) || "{{'CLINICAL_SAVE_FAILURE_MESSAGE_KEY' | translate}}";
                             messagingService.showMessage('error', message);
                         });
-                    }));
-                    window.location.assign(currentPath);
                     }));
                 };
 
