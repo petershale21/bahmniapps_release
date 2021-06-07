@@ -360,12 +360,20 @@ angular.module('bahmni.clinical')
 
             $scope.insertSingleOderDrugsToTreamtments = function(regimen){
                 var isActive = appService.getActive();
+                console.log(isActive);
                 var days = new Date (appService.getFollowupdate()) -  $scope.treatment.encounterDate; 
                 var calculatedDays = Math.ceil(days / (1000 * 60 * 60 * 24)); 
                 if(isActive == true) {
                     $scope.treatment.drugNameDisplay = regimen+" "+"("+$scope.treatment.drug.form+")";
                     $scope.treatment.duration = calculatedDays;
                     $scope.treatment.durationInDays = calculatedDays;
+                    $scope.treatment.doseUnits="Tablet(s)";
+                    $scope.treatment.quantityUnit="Tablet(s)";
+                    $scope.treatment.route="Oral";
+                    $scope.treatment.quantity=calculatedDays;
+                    $scope.treatment.uniformDosingType.dose=1;
+                    $scope.treatment.uniformDosingType.frequency="Once a day";
+
                     if(appService.getOrderstatus() != true ){
                         $scope.add();
                         scope.clearForm();
@@ -376,6 +384,12 @@ angular.module('bahmni.clinical')
                     $scope.treatment.drugNameDisplay = regimen+" "+"("+$scope.treatment.drug.form+")";
                     $scope.treatment.duration = calculatedDays;
                     $scope.treatment.durationInDays = calculatedDays; 
+                    $scope.treatment.doseUnits="Tablet(s)";
+                    $scope.treatment.quantityUnit="Tablet(s)";
+                    $scope.treatment.route="Oral";
+                    $scope.treatment.uniformDosingType.dose=1;
+                    $scope.treatment.uniformDosingType.frequency="Once a day";
+
                     if(appService.getOrderstatus() != true) { 
                         $scope.treatments.pop();
                         $scope.add();

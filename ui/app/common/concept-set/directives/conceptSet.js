@@ -279,6 +279,7 @@ angular.module('bahmni.common.conceptSet')
                             setObservationState(matchingObsArray, disable, error, hide, obsValue);
                             var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
 
+                            //hack to check changes on ART treatment followup form to autopopulate medication from obs to medication tab --pheko---phenduka
                             $scope.$watch(function() { 
                                 matchingObsArray.forEach(switchRegimen => {
                                     if(switchRegimen.label =="Name of Regimen Switched to") 
@@ -429,6 +430,41 @@ angular.module('bahmni.common.conceptSet')
                 };
                 var init = function () {
                     appService.setActive(false);
+
+                            // Hack to autocalculate estimated date of delivery (EDD) once last menstrual period entered --- Pheko
+                            var edd;
+                            if($scope.conceptSetName=="ANC, ANC Program"){
+                                $scope.$watch(function() { 
+                                try {
+                                    if($scope.observations[0].label != undefined){ 
+                                        $scope.observations[0].groupMembers.forEach((element) => {
+                                             element.groupMembers.forEach((element) => {
+                                                 if(element.label== "Obstetric History"){
+                                                     if(element.groupMembers[4].value != undefined){
+                                                         edd=element.groupMembers[4].value;
+                                                         var dt = new Date(edd);
+                                                         dt.setMonth( dt.getMonth() + 9);
+                                                         var day= '' + dt.getDate();
+                                                         var month='' + (dt.getMonth()+1);
+                                                         var year='' + dt.getFullYear();
+                                                         if (month.length < 2) {
+                                                            month = '0' + month;
+                                                         }
+                                                         if (day.length < 2){
+                                                            day = '0' + day;
+                                                         }
+                                                        
+                                                         var finaldate= year+"-"+month+"-"+day;
+                                                         element.groupMembers[5].value=finaldate;
+                                                     }
+                                                }
+                                                 
+                                             });
+                                        });
+                                    }
+                                 } catch (error) { }
+                            });}
+
                     // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
                     // Will refactor accordingly
                     if (conceptSetName == "HIV Treatment and Care Progress Template") {
@@ -476,40 +512,66 @@ angular.module('bahmni.common.conceptSet')
                     } else {
                         // Original function
                         $scope.$watch(function() { 
-                            // if($scope.conceptSetName === "Tuberculosis Followup Template"){
-                            //      try {
-                            //         if($scope.observations[0].label != undefined){ 
-                            //             $scope.observations[0].groupMembers.forEach((element) => {
-                            //                 if(element.label == "Clinical Notes"){
-                            //                     element.groupMembers.forEach((element) => {
-                            //                      if(element.label ==  "TB Regimen"){
-                            //                         if(element.selectedObs.Isoniazid
-                            //                          &&element.selectedObs.Rifampicin 
-                            //                          &&element.selectedObs.Ethambutol 
-                            //                          &&element.selectedObs.Pyrazinamide
-                            //                          &&!element.selectedObs.Streptomycin){
-                            //                             appService.setRegimen("TB CAT 1");
-                            //                             appService.setIsOrderRegimenInserted(true);  
-                            //                         }
-                            //                         else if(element.selectedObs.Isoniazid
-                            //                             &&element.selectedObs.Rifampicin 
-                            //                             &&element.selectedObs.Ethambutol 
-                            //                             &&element.selectedObs.Pyrazinamide
-                            //                             &&element.selectedObs.Streptomycin
-                            //                             ){
-                            //                             appService.setRegimen("TB CAT 2");
-                            //                             appService.setIsOrderRegimenInserted(true);
-                            //                         }
-                            //                         else{
-                            //                             appService.setIsOrderRegimenInserted(false);
-                            //                         }
-                            //                     }
-                            //                     });
-                            //                 }
-                            //             });
-                            //         }
-                            //      } catch (error) { }
-                            // }
+                            if($scope.conceptSetName === "Tuberculosis Followup Template"){
+                                 try {
+                                    if($scope.observations[0].label != undefined){
+                                                                                   
+                                        if($scope.observations[0].groupMembers[6].label == "Next appointment/refill date"){
+                                            if($scope.observations[0].groupMembers[6].value != undefined){
+                                            appService.setFollowupdate($scope.observations[0].groupMembers[6].value);
+                                            var isNotEmpty = appService.getDeactivated();
+                                            var isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
+                                                if (isDeactivated == false)
+                                                   appService.setActive(true);
+                                                else isDeactivated == false;
+                                            }}
+                                        $scope.observations[0].groupMembers.forEach((element) => {
+                                                 if(element.label ==  "TB Regimen"){
+                                                     
+                                                    if(element.selectedObs.Isoniazid){
+                                                        appService.setRegimen("Isoniazid");
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    }
+                                                    if(element.selectedObs.Rifampicin){
+                                                        appService.setRegimen("Rifampicin");
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    }
+                                                    if(element.selectedObs.Ethambutol){
+                                                        appService.setRegimen("Ethambutol");
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    } 
+                                                    if(element.selectedObs.Pyrazinamide){
+                                                        appService.setRegimen("Pyrazinamide");
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    }
+                                                    if(element.selectedObs.Streptomycin){
+                                                        appService.setRegimen("Streptomycin");
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    }
+                                                    if(element.selectedObs.RHZE){
+                                                        appService.setRegimen("RHZE");
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    }
+                                                    if(element.selectedObs.RH){
+                                                        appService.setRegimen("RH-");
+                                                        console.log(element.selectedObs);
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    }
+                                                    if(element.selectedObs.RHZ){
+                                                        appService.setRegimen("RHZ");
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    }
+                                                    if(element.selectedObs.RHE){
+                                                        appService.setRegimen("RHE");
+                                                        appService.setIsOrderRegimenInserted(true); 
+                                                    }
+                                                }else{
+                                                        appService.setIsOrderRegimenInserted(false);
+                                                    }
+                                        });
+                                    }
+                                 } catch (error) { }
+                            }
                             if($scope.conceptSetName === "HIV Treatment and Care Intake Template"){
                                 try {
                                    if($scope.observations[0].label != undefined){ 
@@ -517,7 +579,7 @@ angular.module('bahmni.common.conceptSet')
                                             element.groupMembers.forEach((element) => {
                                             if(element.label ==  "ART Regimen"){
                                                 if(element.value != undefined){
-                                                    appService.setRegimen( element.value.label);
+                                                    appService.setRegimen(element.value.label);
                                                     appService.setIsOrderRegimenInserted(true);
                                                 }else appService.setIsOrderRegimenInserted(true);
                                             }else  appService.setIsOrderRegimenInserted(false);
