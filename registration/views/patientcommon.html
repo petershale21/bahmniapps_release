@@ -108,13 +108,27 @@
                 <div ng-if="patient.uuid != undefined">
                     <article ng-repeat="identifier in patient.extraIdentifiers" class="form-field existing-patient">
                         <div class="field-attribute">
-                            <label class="control-label" for="patientID">{{:: identifier.identifierType.name}}
-                                <span ng-show=":: identifier.identifierType.required && !identifier.hasIdentifierSources()" class="asterick">*</span>
-                            </label>
+                            <span ng-if="identifier.identifierType.name =='New HIV Program ID'">
+                                <strong>
+                                    <label class="control-label" for="patientID">{{:: identifier.identifierType.name}}
+                                        <span ng-show=":: identifier.identifierType.required && !identifier.hasIdentifierSources()" class="asterick">*
+                                        </span>
+                                    </label>
+                                </strong>
+                            </span>
+                            <span ng-if="identifier.identifierType.name !='New HIV Program ID'">
+                                <label class="control-label" for="patientID">{{:: identifier.identifierType.name}}
+                                    <span ng-show=":: identifier.identifierType.required && !identifier.hasIdentifierSources()" class="asterick">*
+                                    </span>
+                                </label>
+                            </span>
                         </div>
-                        <div class="field-value">
+                        <div class="field-value" ng-if="identifier.identifierType.name =='New HIV Program ID'">
                             <input type="text" ng-model="identifier.identifier" disabled="disabled" ng-if="identifier.hasIdentifierSources()"/>
-
+                            <input type="text" id="registrationNumber" ng-model="identifier.registrationNumber" style="font-weight: bold" ng-if="!identifier.hasIdentifierSources()" non-blank="identifier.identifierType.required && !identifier.hasIdentifierSources()" pattern-validate ng-change="identifier.generate()" ng-disabled="readOnlyExtraIdentifiers.indexOf(identifier.identifierType.name)>-1">
+                        </div>
+                        <div class="field-value" ng-if="identifier.identifierType.name !='New HIV Program ID'">
+                            <input type="text" ng-model="identifier.identifier" disabled="disabled" ng-if="identifier.hasIdentifierSources()"/>
                             <input type="text" id="registrationNumber" ng-model="identifier.registrationNumber" ng-if="!identifier.hasIdentifierSources()" non-blank="identifier.identifierType.required && !identifier.hasIdentifierSources()" pattern-validate ng-change="identifier.generate()" ng-disabled="readOnlyExtraIdentifiers.indexOf(identifier.identifierType.name)>-1">
                         </div>
                     </article>
