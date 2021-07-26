@@ -3745,6 +3745,24 @@ angular.module('bahmni.common.appFramework')
                 });
                 return appLoader.promise;
             };
+
+            //**Setting a check field for autopopulations on forms */
+            let isFormSaved = false;
+            let savedFormName = '';
+            this.setSavedFormCheck = function (_isFormSaved ){
+                isFormSaved = _isFormSaved;
+            }
+            this.getSavedFormCheck   = function()
+            {
+                return isFormSaved;
+            }
+            this.setFormName   = function (_savedFormName ){
+                savedFormName  = _savedFormName ;
+            }
+            this.getFormName   = function()
+            {
+                return savedFormName ;
+            }
         }]);
 
 'use strict';
@@ -4232,7 +4250,7 @@ angular.module('bahmni.common.conceptSet')
                             // NB: Currently only works for "Drug Supply duration" and "ARV drugs No. of days dispensed"
                             // Making the code below generic by allowing it to take an observation form and checking all autofields without specifying the concept name explicitly--Pheko
                             
-                            if (obsValue && (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date") && obs.concept.name == conceptName && selectedAsAutocalculate==true) {
+                            if (obsValue && (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date" || obs.concept.dataType =="Text" || obs.concept.dataType == "Boolean") && obs.concept.name == conceptName && selectedAsAutocalculate==true) {
                                 obs.value = obsValue;
                             } else if (obsValue && obs.concept.dataType == "Coded" && obs.concept.name == conceptName && selectedAsAutocalculate==true) {
                                 obs.value = _.find(obs.possibleAnswers, { displayString: obsValue });
@@ -4250,12 +4268,64 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
+                //auto filling form values ---  Pheko - Phenduka
+                var autoFillFormValues = function (flattenedObs,fields) {
+                    flattenedObs.forEach(function (obs) {
+                        fields.forEach(function (autofillfield) {
+                        
+                        if(obs.concept.name == autofillfield.field && autofillfield.fieldValue && (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date" || obs.concept.dataType =="Text" || obs.concept.dataType == "Boolean")){
+                            observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
+                                if(!_.isEmpty(response.data)){
+                                   obs.value = response.data[0].value;
+                                }
+                                
+                            });
+                        }
+                        if(obs.concept.name == autofillfield.field && obs.concept.dataType == "Coded" && autofillfield.fieldValue){
+                            let Answer = {};
+                            
+                            observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
+                                
+                                if(!_.isEmpty(response.data)){
+                                obs.possibleAnswers.forEach(function (answer){
+                                    if(answer.displayString == response.data[0].value.name)
+                                        Answer = answer;
+                                });
+                                obs.value = Answer;
+                                
+                            }
+                            });
+                        }
+                    })
+                    });
+
+                }
                 var processConditions = function (flattenedObs, fields, disable, error, hide, assingvalue,autocalculatevalue) {
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
                         var obsValue;
                         var clonedObsInSameGroup;
                         var conceptNaming;
+                        
+                    if(!appService.getSavedFormCheck()){
+                        
+                        appService.setFormName($scope.conceptSetName);
+
+                        autoFillFormValues(flattenedObs,fields);
+
+                    }
+                        
+
+                    if(appService.getSavedFormCheck() && appService.getFormName != $scope.conceptSetName){
+                        
+                        appService.setFormName($scope.conceptSetName);
+
+                        autoFillFormValues(flattenedObs,fields);
+
+                    }
+
+//-----------------------------------------------------------------------------------
+
                         flattenedObs.forEach(function (obs) {
                             if (clonedObsInSameGroup != false && (obs.concept.name == field || (field.field && obs.concept.name == field.field))) {
                                 matchingObsArray.push(obs);
