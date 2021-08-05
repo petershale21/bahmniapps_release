@@ -29,8 +29,34 @@ angular.module('bahmni.registration')
                 $scope.patient = openmrsPatientMapper.map(openmrsPatient);
                 setReadOnlyFields();
                 expandDataFilledSections();
+                interchangeOldHIVIDwithTheNewHIVidUponLoadingPatient();
                 $scope.patientLoaded = true;
             };
+            
+            var interchangeOldHIVIDwithTheNewHIVidUponLoadingPatient = function(){
+                var newIdentifier = {};
+                var index = 0;
+                var newIndexOfHIVID= 0;
+                var newIdentifier_Openmrs = {};
+                $scope.openMRSPatient.identifiers.forEach(element => {
+                    if("New HIV Program ID" == element.identifierType.display){
+                        $scope.patient.extraIdentifiers.forEach(element => {
+                            if("HIV Program ID" == element.identifierType.name){
+                                newIdentifier = JSON.parse(JSON.stringify(element));
+                                if((element.identifier == undefined || element.identifier == null)){
+                                    $scope.patient.extraIdentifiers.splice(index, 1);
+                                    newIndexOfHIVID = index;
+                                }
+                            } index += 1;
+                        });
+                        newIdentifier_Openmrs = JSON.parse(JSON.stringify(element));
+                        newIdentifier.identifierType.name = newIdentifier_Openmrs.identifierType.display;
+                        newIdentifier.registrationNumber = newIdentifier_Openmrs.identifier;
+                        $scope.patient.extraIdentifiers.splice(newIndexOfHIVID, 0, newIdentifier);
+                    }
+                });
+            }
+
 
             var expandDataFilledSections = function () {
                 angular.forEach($rootScope.patientConfiguration && $rootScope.patientConfiguration.getPatientAttributesSections(), function (section) {

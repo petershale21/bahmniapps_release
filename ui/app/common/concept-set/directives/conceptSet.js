@@ -220,7 +220,7 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
-                var setObservationState = function (obsArray, disable, error, hide, obsValue) {
+                var setObservationState = function (obsArray, disable, error, hide, obsValue,conceptName,selectedAsAutocalculate) {
                     if (!_.isEmpty(obsArray)) {
                         _.each(obsArray, function (obs) {
                             // TODO: If initial regimen is not present for ART Regimen, always enable - Teboho
@@ -237,11 +237,14 @@ angular.module('bahmni.common.conceptSet')
                             // TODO : Hack for assigning values to an obs - Teboho
                             // Have generalize this code and remove explicit mention of the concept name i.e. HIVTC, ARV drugs supply duration maybe load obsValue with conceptName
                             // NB: Currently only works for "Drug Supply duration" and "ARV drugs No. of days dispensed"
-                            if (obsValue && obs.concept.dataType == "Numeric" && obs.concept.name == "ARV drugs No. of days dispensed") {
+
+                            // Making the code below generic by allowing it to take an observation form and checking all autofields without specifying the concept name explicitly--Pheko
+
+                            if (obsValue && (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date") && obs.concept.name == conceptName && selectedAsAutocalculate==true) {
                                 obs.value = obsValue;
-                            } else if (obsValue && obs.concept.dataType == "Coded" && obs.concept.name == "HIVTC, ARV drugs supply duration") {
+                            } else if (obsValue && obs.concept.dataType == "Coded" && obs.concept.name == conceptName && selectedAsAutocalculate==true) {
                                 obs.value = _.find(obs.possibleAnswers, { displayString: obsValue });
-                            } else if (!obsValue && obs.concept.dataType == "Coded" && obs.concept.name == "HIVTC, ARV drugs supply duration") {
+                            } else if (!obsValue && obs.concept.dataType == "Coded" && obs.concept.name == conceptName && selectedAsAutocalculate==true) {
                                 obs.value = undefined;
                             }
                             if (obs.groupMembers) {
@@ -254,19 +257,76 @@ angular.module('bahmni.common.conceptSet')
                     }
                 };
 
+                //auto filling form values ---  Pheko - Phenduka
+                var autoFillFormValues = function (flattenedObs,fields) {
+                    flattenedObs.forEach(function (obs) {
+                        fields.forEach(function (autofillfield) {
+                        
+                        if(obs.concept.name == autofillfield.field && autofillfield.fieldValue && (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date" || obs.concept.dataType =="Text" || obs.concept.dataType == "Boolean")){
+                            observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
+                                if(!_.isEmpty(response.data)){
+                                    obs.value = response.data[0].value;
+                                }
+                                
+                            });
+                        }
+                        if(obs.concept.name == autofillfield.field && obs.concept.dataType == "Coded" && autofillfield.fieldValue){
+                            let Answer = {};
+                            
+                            observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
+                                
+                                if(!_.isEmpty(response.data)){
+                                obs.possibleAnswers.forEach(function (answer){
+                                    if(answer.displayString == response.data[0].value.name)
+                                        Answer = answer;
+                                });
+                                obs.value = Answer;
+                                
+                            }
+                            });
+                        }
+                    })
+                    });
+
+                }
+
         
 
-                var processConditions = function (flattenedObs, fields, disable, error, hide, assingvalue) {
+                var processConditions = function (flattenedObs, fields, disable, error, hide, assingvalue,autocalculatevalue) {
 
                     _.each(fields, function (field) {
                         var matchingObsArray = [];
                         var obsValue;
                         var clonedObsInSameGroup;
+                        var conceptNaming;
+
+                        //------------------- Pheko - Phenduka ---------------------------------
+
+                        if(!appService.getSavedFormCheck()){
+                        
+                            appService.setFormName($scope.conceptSetName);
+    
+                            autoFillFormValues(flattenedObs,fields);
+    
+                        }
+                            
+    
+                        if(appService.getSavedFormCheck() && appService.getFormName != $scope.conceptSetName){
+                            
+                            appService.setFormName($scope.conceptSetName);
+    
+                            autoFillFormValues(flattenedObs,fields);
+                        }
+
+                        //----------------------------------------------------------------------
+
                         flattenedObs.forEach(function (obs) {
                             if (clonedObsInSameGroup != false && obs.concept.name == field || (field.field && obs.concept.name == field.field)) {
                                 matchingObsArray.push(obs);
                                 
                                 clonedObsInSameGroup = true;
+                                conceptNaming=obs.concept.name;
+                                
                                 if (field.field) {
                                     obsValue = field.fieldValue;
                                 }
@@ -276,30 +336,26 @@ angular.module('bahmni.common.conceptSet')
                         });
 
                         if (!_.isEmpty(matchingObsArray)) {
-                            setObservationState(matchingObsArray, disable, error, hide, obsValue);
+                              //passing the autocalculatevalue parameter to be used in the setObservationState function implementation --Pheko
+                             setObservationState(matchingObsArray, disable, error, hide, obsValue,conceptNaming,autocalculatevalue);
                             var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
 
                             //hack to check changes on ART treatment followup form to autopopulate medication from obs to medication tab --pheko---phenduka
                             $scope.$watch(function() { 
                                 matchingObsArray.forEach(switchRegimen => {
-                                    if(switchRegimen.label =="Name of Regimen Switched to") 
-                                    {
-                                        if(switchRegimen.value != undefined)
-                                        {
+                                    if(switchRegimen.label =="Name of Regimen Switched to") {
+                                        if(switchRegimen.value != undefined){
                                             appService.setRegimen(switchRegimen.value.displayString);
                                         }
-    
                                     }
-                                    else if(switchRegimen.label =="Treatment Substitution") 
-                                    {
+                                    else if(switchRegimen.label =="Treatment Substitution") {
                                         if(switchRegimen.groupMembers[1].value != undefined)
                                         {
                                             appService.setRegimen(switchRegimen.groupMembers[1].value.displayString);
                                         }
                                     }
                                     else if(switchRegimen.label == "ART Regimen"){
-                                        if(switchRegimen.value != undefined)
-                                        {
+                                        if(switchRegimen.value != undefined){
                                             appService.setRegimen(switchRegimen.value.value);
                                             appService.setIsOrderRegimenInserted(true); 
                                         }
@@ -307,29 +363,20 @@ angular.module('bahmni.common.conceptSet')
                                     }
                                 });
                                 obsTreatment.forEach(element => {
-
-                                   
-                                    if(element.label == "Follow-up date")
-                                    {
-                                        if(element.value != undefined )
-                                        {
+                                    if(element.label == "Follow-up date"){
+                                        if(element.value != undefined ) {
                                             appService.setFollowupdate(element.value);
                                             var isNotEmpty = appService.getDeactivated();
                                             var isDeactivated = isNotEmpty == null ?  false : isNotEmpty;
-                                            if (isDeactivated == false)
-                                            {
+                                            if (isDeactivated == false) {
                                                 appService.setActive(true);
                                             }
-                                            else
-                                            {
+                                            else{
                                                 isDeactivated == false;
                                             }
                                         }
                                     }
                                 })
-
-
-
                             });
                             
                         } else {
@@ -358,7 +405,16 @@ angular.module('bahmni.common.conceptSet')
                                 processConditions(flattenedObs, conditions.enable, false);
                                 processConditions(flattenedObs, conditions.show, false, undefined, false);
                                 processConditions(flattenedObs, conditions.hide, false, undefined, true);
-                                processConditions(flattenedObs, conditions.assignedValues, false, undefined, false, true);
+
+                                //adding an extra config value to check whether the field is autocalculate or not --Pheko
+                                if(conditions.assignedValues!==undefined){
+
+                                    conditions.assignedValues.forEach(function (autoArray) {
+                                        processConditions(flattenedObs, conditions.assignedValues, false, undefined, false, true,autoArray.autocalculate);
+                                    });
+
+                                }
+
                                 _.each(conditions.enable, function (subConditionConceptName) {
                                     var conditionFn = Bahmni.ConceptSet.FormConditions.rules && Bahmni.ConceptSet.FormConditions.rules[subConditionConceptName];
                                     if (conditionFn != null) {
