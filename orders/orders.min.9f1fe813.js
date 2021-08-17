@@ -3230,7 +3230,8 @@ angular.module('bahmni.common.conceptSet')
                     flattenedObs.forEach(function (obs) {
                         fields.forEach(function (autofillfield) {
                         
-                        if(obs.concept.name == autofillfield.field && autofillfield.fieldValue && (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date" || obs.concept.dataType =="Text" || obs.concept.dataType == "Boolean")){
+                        if(obs.concept.name == autofillfield.field && autofillfield.fieldValue == "AutoFill" && 
+                            (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date" || obs.concept.dataType =="Text" || obs.concept.dataType == "Boolean")){
                             observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
                                 if(!_.isEmpty(response.data)){
                                     obs.value = response.data[0].value;
@@ -3238,7 +3239,7 @@ angular.module('bahmni.common.conceptSet')
                                 
                             });
                         }
-                        if(obs.concept.name == autofillfield.field && obs.concept.dataType == "Coded" && autofillfield.fieldValue){
+                        if(obs.concept.name == autofillfield.field && obs.concept.dataType == "Coded" && autofillfield.fieldValue == "AutoFill"){
                             let Answer = {};
                             
                             observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
