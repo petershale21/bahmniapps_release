@@ -5,11 +5,13 @@ angular.module('bahmni.clinical')
         var controller = function ($scope, $rootScope) {
             var patientContextConfig = appService.getAppDescriptor().getConfigValue('patientContext') || {};
             $scope.initPromise = patientService.getPatientContext($scope.patient.uuid, $state.params.enrollment, patientContextConfig.personAttributes, patientContextConfig.programAttributes, patientContextConfig.additionalPatientIdentifiers);
-
             $scope.initPromise.then(function (response) {
+                // debugger;
                 $scope.patientContext = response.data;
+                // var patientContext = $scope.patientContext.additionalPatientIdentifiers;
                 var programAttributes = $scope.patientContext.programAttributes;
                 var personAttributes = $scope.patientContext.personAttributes;
+                console.log($scope.patientContext);
 
                 convertBooleanValuesToEnglish(personAttributes);
                 convertBooleanValuesToEnglish(programAttributes);
@@ -38,7 +40,7 @@ angular.module('bahmni.clinical')
         };
 
         var convertBooleanValuesToEnglish = function (attributes) {
-            var booleanMap = {'true': 'Yes', 'false': 'No'};
+            var booleanMap = { 'true': 'Yes', 'false': 'No' };
             _.forEach(attributes, function (value) {
                 value.value = booleanMap[value.value] ? booleanMap[value.value] : value.value;
             });
