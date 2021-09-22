@@ -41,7 +41,8 @@ angular.module('bahmni.registration')
 
         var importPatient = function (patient, config) {
             var defer = $q.defer();
-            var importPatientUrl = Bahmni.Common.Constants.bahmniSearchUrl + "/mpipatient" + "?patientEcid=" + patient.identifier;
+            // debugger;
+            var importPatientUrl = Bahmni.Common.Constants.bahmniSearchUrl + "/mpipatient" + "?patientEcid=" + patient.extraIdentifiers["ECID"];
 
             var onResults = function (result) {
                 defer.resolve(result);
@@ -57,7 +58,7 @@ angular.module('bahmni.registration')
             var url = openmrsUrl + "/ws/rest/v1/patientprofile/" + uuid;
             var config = {
                 method: "GET",
-                params: {v: "full"},
+                params: { v: "full" },
                 withCredentials: true
             };
 
@@ -73,7 +74,7 @@ angular.module('bahmni.registration')
             var url = baseOpenMRSRESTURL + "/bahmnicore/patientprofile";
             return $http.post(url, data, {
                 withCredentials: true,
-                headers: {"Accept": "application/json", "Content-Type": "application/json", "Jump-Accepted": jumpAccepted}
+                headers: { "Accept": "application/json", "Content-Type": "application/json", "Jump-Accepted": jumpAccepted }
             });
         };
 
@@ -83,7 +84,7 @@ angular.module('bahmni.registration')
             var url = baseOpenMRSRESTURL + "/bahmnicore/patientprofile/" + openMRSPatient.uuid;
             var config = {
                 withCredentials: true,
-                headers: {"Accept": "application/json", "Content-Type": "application/json"}
+                headers: { "Accept": "application/json", "Content-Type": "application/json" }
             };
             $http.post(url, data, config).then(function (result) {
                 deferred.resolve(result);
@@ -94,11 +95,11 @@ angular.module('bahmni.registration')
         };
 
         var generateIdentifier = function (patient) {
-            var data = {"identifierSourceName": patient.identifierPrefix ? patient.identifierPrefix.prefix : ""};
+            var data = { "identifierSourceName": patient.identifierPrefix ? patient.identifierPrefix.prefix : "" };
             var url = openmrsUrl + "/ws/rest/v1/idgen";
             var config = {
                 withCredentials: true,
-                headers: {"Accept": "text/plain", "Content-Type": "application/json"}
+                headers: { "Accept": "text/plain", "Content-Type": "application/json" }
             };
             return $http.post(url, data, config);
         };
