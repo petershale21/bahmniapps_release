@@ -8,7 +8,7 @@ angular.module('bahmni.registration')
             var naturalOrderBy = window.naturalOrderBy;
             $scope.direction = ['asc'];
             $scope.hieresults = [];
-            
+
             $scope.option = {
                 selected: "local"
             };
@@ -104,7 +104,7 @@ angular.module('bahmni.registration')
                     if ($scope.option.selected == "local") {
                         searching = true;
                         var searchPromise = patientService.search(
-                            $scope.searchParameters.name + " "+  $scope.searchParameters.last_name,                            
+                            $scope.searchParameters.name + " " + $scope.searchParameters.last_name,
                             undefined,
                             $scope.addressSearchConfig.field,
                             $scope.searchParameters.addressFieldValue,
@@ -146,12 +146,14 @@ angular.module('bahmni.registration')
                             $scope.addressSearchResultsConfig.fields,
                             $scope.personSearchResultsConfig.fields
                         ).then(function (response) {
+
                             mapExtraIdentifiers(response);
 
                             if (response.pageOfResults.length > 0) {
+
                                 $scope.hieresults = response.pageOfResults;
                                 $scope.noResultsMessage = null;
-                                
+
                             } else {
                                 $scope.noResultsMessage = 'REGISTRATION_LABEL_COULD_NOT_FIND_PATIENT';
                             }
@@ -159,7 +161,7 @@ angular.module('bahmni.registration')
 
 
                         spinner.forPromise(searchPromise);
-                        
+
                     }
                 }
             };
@@ -282,9 +284,9 @@ angular.module('bahmni.registration')
                 var resultsConfigNotFound = false;
                 if (_.isEmpty(patientSearchResultConfigs)) {
                     resultsConfigNotFound = true;
-                    patientSearchResultConfigs.address = {"fields": allSearchConfigs.address ? [allSearchConfigs.address.field] : {}};
+                    patientSearchResultConfigs.address = { "fields": allSearchConfigs.address ? [allSearchConfigs.address.field] : {} };
                     patientSearchResultConfigs.personAttributes
-                        = {fields: allSearchConfigs.customAttributes ? allSearchConfigs.customAttributes.fields : {}};
+                        = { fields: allSearchConfigs.customAttributes ? allSearchConfigs.customAttributes.fields : {} };
                 } else {
                     if (!patientSearchResultConfigs.address) patientSearchResultConfigs.address = {};
                     if (!patientSearchResultConfigs.personAttributes) patientSearchResultConfigs.personAttributes = {};
@@ -328,16 +330,16 @@ angular.module('bahmni.registration')
 
                 if ($scope.option.selected == "national") {
                     disabled = !$scope.searchParameters.name && !$scope.searchParameters.addressFieldValue
-                    && !$scope.searchParameters.last_name
-                    && !$scope.searchParameters.addressFieldValue
-                    && !$scope.searchParameters.customAttribute
-                    && !$scope.searchParameters.programAttributeFieldValue
-                    && !$scope.searchParameters.nationalIdNumber;
+                        && !$scope.searchParameters.last_name
+                        && !$scope.searchParameters.addressFieldValue
+                        && !$scope.searchParameters.customAttribute
+                        && !$scope.searchParameters.programAttributeFieldValue
+                        && !$scope.searchParameters.nationalIdNumber;
                 } else if ($scope.option.selected == "local") {
                     disabled = !$scope.searchParameters.name && !$scope.searchParameters.addressFieldValue
-                    && !$scope.searchParameters.last_name
-                    && !$scope.searchParameters.customAttribute
-                    && !$scope.searchParameters.programAttributeFieldValue;
+                        && !$scope.searchParameters.last_name
+                        && !$scope.searchParameters.customAttribute
+                        && !$scope.searchParameters.programAttributeFieldValue;
                 }
                 return disabled;
             };
@@ -382,12 +384,12 @@ angular.module('bahmni.registration')
                             if (data.pageOfResults.length === 1) {
                                 var patient = data.pageOfResults[0];
                                 var forwardUrl = appService.getAppDescriptor().getConfigValue("searchByIdForwardUrl") || "/patient/{{patientUuid}}";
-                                $location.url(appService.getAppDescriptor().formatUrl(forwardUrl, {'patientUuid': patient.uuid}));
+                                $location.url(appService.getAppDescriptor().formatUrl(forwardUrl, { 'patientUuid': patient.uuid }));
                             } else if (data.pageOfResults.length > 1) {
                                 $scope.results = data.pageOfResults;
                                 $scope.noResultsMessage = null;
                             } else {
-                                $scope.patientIdentifier = {'patientIdentifier': patientIdentifier};
+                                $scope.patientIdentifier = { 'patientIdentifier': patientIdentifier };
                                 $scope.noResultsMessage = 'REGISTRATION_LABEL_COULD_NOT_FIND_PATIENT';
                             }
                         });
@@ -408,7 +410,7 @@ angular.module('bahmni.registration')
                                 $scope.hieresults = data.pageOfResults;
                                 $scope.noResultsMessage = null;
                             } else {
-                                $scope.patientIdentifier = {'patientIdentifier': patientIdentifier};
+                                $scope.patientIdentifier = { 'patientIdentifier': patientIdentifier };
                                 $scope.noResultsMessage = 'REGISTRATION_LABEL_COULD_NOT_FIND_PATIENT';
                             }
                         });
@@ -420,7 +422,7 @@ angular.module('bahmni.registration')
                 var importPromise = patientService.importPatient(patient).then(function (response) {
                     if (response.length > 0) {
                         var forwardUrl = appService.getAppDescriptor().getConfigValue("searchByIdForwardUrl") || "/patient/{{patientUuid}}";
-                        $location.url(appService.getAppDescriptor().formatUrl(forwardUrl, {'patientUuid': response[0].uuid}));
+                        $location.url(appService.getAppDescriptor().formatUrl(forwardUrl, { 'patientUuid': response[0].uuid }));
                     }
                 });
                 spinner.forPromise(importPromise);
@@ -428,7 +430,7 @@ angular.module('bahmni.registration')
 
             var isUserPrivilegedForSearch = function () {
                 var applicablePrivs = [Bahmni.Common.Constants.viewPatientsPrivilege, Bahmni.Common.Constants.editPatientsPrivilege,
-                    Bahmni.Common.Constants.addVisitsPrivilege, Bahmni.Common.Constants.deleteVisitsPrivilege];
+                Bahmni.Common.Constants.addVisitsPrivilege, Bahmni.Common.Constants.deleteVisitsPrivilege];
                 var userPrivs = _.map($rootScope.currentUser.privileges, function (privilege) {
                     return privilege.name;
                 });
