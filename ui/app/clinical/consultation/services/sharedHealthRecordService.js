@@ -18,6 +18,13 @@ angular.module('bahmni.clinical')
             return sharedHealthRecordServiceStrategy.search(config);
         };
 
+        var retriveAndViewObs = function(patient_id) {
+            var config = {
+                withCredentials: true
+            };
+            return sharedHealthRecordServiceStrategy.retriveAndViewObs(patient_id, config);
+        };        
+
         var retriveAndImportDocument = function (documentId) {
             var config = {
                 withCredentials: true
@@ -27,6 +34,7 @@ angular.module('bahmni.clinical')
 
         return {
             search: search,
-            retriveAndImportDocument: retriveAndImportDocument
+            retriveAndImportDocument: retriveAndImportDocument,
+            retriveAndViewObs: retriveAndViewObs
         };
     }]);

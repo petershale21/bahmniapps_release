@@ -4,6 +4,7 @@ angular.module('bahmni.clinical')
     .controller('SharedRecordPageController', ['$scope', '$rootScope', '$state', '$location', 'sharedHealthRecordService', 'spinner', 'patientContext', 'messagingService', function ($scope,
         $rootScope, $state, $location, sharedHealthRecordService, spinner, patientContext, messagingService) {
         $scope.results = [];
+        $scope.restResults = [];
         $scope.today = Bahmni.Common.Util.DateUtil.getDateWithoutTime(Bahmni.Common.Util.DateUtil.now());
 
         $scope.findClinicalDocumentsForPatient = function () {
@@ -92,8 +93,20 @@ angular.module('bahmni.clinical')
             spinner.forPromise(importPromise);
         };
 
+        $scope.retriveAndViewObs = function () {
+            var importPromise = sharedHealthRecordService.retriveAndViewObs(patientContext.patient.identifier).then(function (response) {
+                $scope.restResults = response;
+                $scope.noResultsMessage = $scope.restResults.length === 0 ? 'No patient records found for patient in HIE' : null;
+            });
+            spinner.forPromise(importPromise);
+        };       
+
         $scope.resultsPresent = function () {
             return angular.isDefined($scope.results) && $scope.results.length > 0;
+        };
+
+        $scope.restResultsPresent = function () {
+            return angular.isDefined($scope.restResults) && $scope.restResults.length > 0;
         };
 
         var convertToStandardISODateTime = function (encounterDate) {
