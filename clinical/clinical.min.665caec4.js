@@ -1738,6 +1738,17 @@ angular.module('bahmni.common.appFramework')
             {
                 return savedFormName ;
             }
+
+            //-------------------------------AHD Meds Flags------------------------------------
+            let _AHD_Regimen = '';
+            this.set_AHD_Regimen  = function (_ahd_regimen){
+                _AHD_Regimen = _ahd_regimen;
+            }
+            this.get_AHD_Regimen = function()
+            {
+                return _AHD_Regimen;
+            }
+            
         }]);
 
 'use strict';
@@ -6154,7 +6165,6 @@ angular.module('bahmni.common.conceptSet')
                             appService.setFormName($scope.conceptSetName);
     
                             autoFillFormValues(flattenedObs,fields);
-    
                         }
                             
     
@@ -6187,7 +6197,7 @@ angular.module('bahmni.common.conceptSet')
                              setObservationState(matchingObsArray, disable, error, hide, obsValue,conceptNaming,autocalculatevalue);
                             var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
 
-                            //hack to check changes on ART treatment followup form to autopopulate medication from obs to medication tab --pheko---phenduka
+                            //hack to check changes on ART & AHD treatment followup form to autopopulate medication from obs to medication tab --pheko---phenduka
                             $scope.$watch(function() { 
                                 matchingObsArray.forEach(switchRegimen => {
                                     if(switchRegimen.label =="Name of Regimen Switched to") {
@@ -6223,6 +6233,18 @@ angular.module('bahmni.common.conceptSet')
                                             }
                                         }
                                     }
+
+                                    element.groupMembers.forEach(element => {
+                                        if(element.label == "Crypto Menengitis Regimen")
+                                        {
+                                            if(element.value != undefined ) {
+                                                appService.set_AHD_Regimen(element.value.displayString);
+                                            }
+                                            else{
+                                                appService.set_AHD_Regimen('');
+                                            }
+                                        }
+                                    });
                                 })
                             });
                             
@@ -17724,6 +17746,29 @@ angular.module('bahmni.clinical')
                 }else $scope.orderSets = {};
             }
 
+            var addMultipleOrderSetsDrugsToMedicationTabAHD = function (Regimen) {
+
+                if (Regimen && Regimen.length >= 3) {
+                    orderSetService.getOrderSetsByQuery(Regimen).then(function (response) {
+                        $scope.orderSets = response.data.results;
+                        _.each($scope.orderSets, function (orderSet) {
+                            _.each(orderSet.orderSetMembers, setUpOrderSetTransactionalData);
+                        });
+                        if(_.isEmpty($scope.orderSets) == false){
+                           // $scope.treatments.pop();
+                            // while($scope.orderSetTreatments.length > 0) 
+                            //     $scope.orderSetTreatments.pop();
+                            if(appService.getOrderstatus() != true )
+                                $scope.addOrderSet($scope.orderSets[0]);
+                            else $scope.clearForm();
+                        }else $scope.removeOrderSet();
+                    }); 
+                }else {
+                    $scope.orderSets = {}
+                };
+
+            }
+
             var addsingleDrugsToMedicationsTab = function(Regimen){
                 if(Regimen && Regimen.length >= 3) {
                     let selectItem = {
@@ -17743,9 +17788,16 @@ angular.module('bahmni.clinical')
                             }
                             $scope.onSelect(drugOder);
                             if($scope.orderSets.length == 0) 
-                                $scope.insertSingleOderDrugsToTreamtments(Regimen);y
+                                $scope.insertSingleOderDrugsToTreamtments(Regimen);
                         }catch(e){ }
                     });
+                }
+            }
+
+            var AHD_CallBack_Function = function () {
+                let _AHD_Regimen = appService.get_AHD_Regimen();
+                if(_AHD_Regimen != ''){
+                    addMultipleOrderSetsDrugsToMedicationTabAHD(_AHD_Regimen);
                 }
             }
 
@@ -17753,11 +17805,11 @@ angular.module('bahmni.clinical')
                 let Regimen = appService.getRegimen();
                 addMultipleOrderSetsDrugsToMedicationTab(Regimen);
                 addsingleDrugsToMedicationsTab(Regimen);
+                AHD_CallBack_Function();
             }
 
             $scope.insertSingleOderDrugsToTreamtments = function(regimen){
                 var isActive = appService.getActive();
-                console.log(isActive);
                 var days = new Date (appService.getFollowupdate()) -  $scope.treatment.encounterDate; 
                 var calculatedDays = Math.ceil(days / (1000 * 60 * 60 * 24)); 
                 if(isActive == true) {

@@ -1117,6 +1117,17 @@ angular.module('bahmni.common.appFramework')
             {
                 return savedFormName ;
             }
+
+            //-------------------------------AHD Meds Flags------------------------------------
+            let _AHD_Regimen = '';
+            this.set_AHD_Regimen  = function (_ahd_regimen){
+                _AHD_Regimen = _ahd_regimen;
+            }
+            this.get_AHD_Regimen = function()
+            {
+                return _AHD_Regimen;
+            }
+            
         }]);
 
 'use strict';
@@ -3276,7 +3287,6 @@ angular.module('bahmni.common.conceptSet')
                             appService.setFormName($scope.conceptSetName);
     
                             autoFillFormValues(flattenedObs,fields);
-    
                         }
                             
     
@@ -3309,7 +3319,7 @@ angular.module('bahmni.common.conceptSet')
                              setObservationState(matchingObsArray, disable, error, hide, obsValue,conceptNaming,autocalculatevalue);
                             var obsTreatment = $scope.observations[0].groupMembers[0].groupMembers;
 
-                            //hack to check changes on ART treatment followup form to autopopulate medication from obs to medication tab --pheko---phenduka
+                            //hack to check changes on ART & AHD treatment followup form to autopopulate medication from obs to medication tab --pheko---phenduka
                             $scope.$watch(function() { 
                                 matchingObsArray.forEach(switchRegimen => {
                                     if(switchRegimen.label =="Name of Regimen Switched to") {
@@ -3345,6 +3355,18 @@ angular.module('bahmni.common.conceptSet')
                                             }
                                         }
                                     }
+
+                                    element.groupMembers.forEach(element => {
+                                        if(element.label == "Crypto Menengitis Regimen")
+                                        {
+                                            if(element.value != undefined ) {
+                                                appService.set_AHD_Regimen(element.value.displayString);
+                                            }
+                                            else{
+                                                appService.set_AHD_Regimen('');
+                                            }
+                                        }
+                                    });
                                 })
                             });
                             
