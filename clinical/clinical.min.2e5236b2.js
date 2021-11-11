@@ -15953,6 +15953,13 @@ angular.module('bahmni.clinical')
             return sharedHealthRecordServiceStrategy.search(config);
         };
 
+        var retriveAndViewObs = function(patient_id) {
+            var config = {
+                withCredentials: true
+            };
+            return sharedHealthRecordServiceStrategy.retriveAndViewObs(patient_id, config);
+        };        
+
         var retriveAndImportDocument = function (documentId) {
             var config = {
                 withCredentials: true
@@ -15962,9 +15969,11 @@ angular.module('bahmni.clinical')
 
         return {
             search: search,
-            retriveAndImportDocument: retriveAndImportDocument
+            retriveAndImportDocument: retriveAndImportDocument,
+            retriveAndViewObs: retriveAndViewObs
         };
     }]);
+
 'use strict';
 
 angular.module('bahmni.clinical')
@@ -19188,6 +19197,7 @@ angular.module('bahmni.clinical')
     .controller('SharedRecordPageController', ['$scope', '$rootScope', '$state', '$location', 'sharedHealthRecordService', 'spinner', 'patientContext', 'messagingService', function ($scope,
         $rootScope, $state, $location, sharedHealthRecordService, spinner, patientContext, messagingService) {
         $scope.results = [];
+        $scope.restResults = [];
         $scope.today = Bahmni.Common.Util.DateUtil.getDateWithoutTime(Bahmni.Common.Util.DateUtil.now());
 
         $scope.findClinicalDocumentsForPatient = function () {
@@ -19276,8 +19286,20 @@ angular.module('bahmni.clinical')
             spinner.forPromise(importPromise);
         };
 
+        $scope.retriveAndViewObs = function () {
+            var importPromise = sharedHealthRecordService.retriveAndViewObs(patientContext.patient.identifier).then(function (response) {
+                $scope.restResults = response;
+                $scope.noResultsMessage = $scope.restResults.length === 0 ? 'No patient records found for patient in HIE' : null;
+            });
+            spinner.forPromise(importPromise);
+        };       
+
         $scope.resultsPresent = function () {
             return angular.isDefined($scope.results) && $scope.results.length > 0;
+        };
+
+        $scope.restResultsPresent = function () {
+            return angular.isDefined($scope.restResults) && $scope.restResults.length > 0;
         };
 
         var convertToStandardISODateTime = function (encounterDate) {
@@ -19301,6 +19323,7 @@ angular.module('bahmni.clinical')
 
         initialize();
     }]);
+
 'use strict';
 
 angular.module('bahmni.clinical')

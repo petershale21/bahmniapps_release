@@ -1592,6 +1592,7 @@ angular.module('bahmni.common.patient')
             });
             return patient;
         };
+		
         this.generateIdentifier = function () {
             var openmrsUrl = Bahmni.Common.Constants.openmrsUrl;
             var data = {"identifierSourceName": "NewART Number MPI"};
