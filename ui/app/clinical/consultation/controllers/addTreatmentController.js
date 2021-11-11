@@ -327,6 +327,29 @@ angular.module('bahmni.clinical')
                 }else $scope.orderSets = {};
             }
 
+            var addMultipleOrderSetsDrugsToMedicationTabAHD = function (Regimen) {
+
+                if (Regimen && Regimen.length >= 3) {
+                    orderSetService.getOrderSetsByQuery(Regimen).then(function (response) {
+                        $scope.orderSets = response.data.results;
+                        _.each($scope.orderSets, function (orderSet) {
+                            _.each(orderSet.orderSetMembers, setUpOrderSetTransactionalData);
+                        });
+                        if(_.isEmpty($scope.orderSets) == false){
+                           // $scope.treatments.pop();
+                            // while($scope.orderSetTreatments.length > 0) 
+                            //     $scope.orderSetTreatments.pop();
+                            if(appService.getOrderstatus() != true )
+                                $scope.addOrderSet($scope.orderSets[0]);
+                            else $scope.clearForm();
+                        }else $scope.removeOrderSet();
+                    }); 
+                }else {
+                    $scope.orderSets = {}
+                };
+
+            }
+
             var addsingleDrugsToMedicationsTab = function(Regimen){
                 if(Regimen && Regimen.length >= 3) {
                     let selectItem = {
@@ -346,9 +369,16 @@ angular.module('bahmni.clinical')
                             }
                             $scope.onSelect(drugOder);
                             if($scope.orderSets.length == 0) 
-                                $scope.insertSingleOderDrugsToTreamtments(Regimen);y
+                                $scope.insertSingleOderDrugsToTreamtments(Regimen);
                         }catch(e){ }
                     });
+                }
+            }
+
+            var AHD_CallBack_Function = function () {
+                let _AHD_Regimen = appService.get_AHD_Regimen();
+                if(_AHD_Regimen != ''){
+                    addMultipleOrderSetsDrugsToMedicationTabAHD(_AHD_Regimen);
                 }
             }
 
@@ -356,11 +386,11 @@ angular.module('bahmni.clinical')
                 let Regimen = appService.getRegimen();
                 addMultipleOrderSetsDrugsToMedicationTab(Regimen);
                 addsingleDrugsToMedicationsTab(Regimen);
+                AHD_CallBack_Function();
             }
 
             $scope.insertSingleOderDrugsToTreamtments = function(regimen){
                 var isActive = appService.getActive();
-                console.log(isActive);
                 var days = new Date (appService.getFollowupdate()) -  $scope.treatment.encounterDate; 
                 var calculatedDays = Math.ceil(days / (1000 * 60 * 60 * 24)); 
                 if(isActive == true) {
