@@ -17,15 +17,15 @@ angular.module('bahmni.clinical')
             return defer.promise;
         };
 
-        var retriveAndImportDocument = function (documentId, config) {
+        var retriveAndViewObs = function (patient_id, config) {
             var defer = $q.defer();
-            var importDocumentUrl = Bahmni.Common.Constants.bahmniSharedHealthRecordUrl + "?documentId=" + documentId;
+            var importObsUrl = Bahmni.Common.Constants.bahmniSharedHealthRecordUrl + "/summary" + "?patient_identifier=" + patient_id;
 
             var onResults = function (result) {
                 defer.resolve(result);
             };
 
-            $http.post(importDocumentUrl, config).success(onResults)
+            $http.get(importObsUrl, config).success(onResults)
                 .error(function (error) {
                     defer.reject(error);
                 });
