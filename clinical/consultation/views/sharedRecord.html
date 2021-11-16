@@ -10,13 +10,15 @@
                     <input tabindex="5" id="to-date" date-converter type="date" max="{{::today}}" ng-model="toDate" class="dashboard-date-picker">
                 </article>
 
+            <!-- 
                 <article class="fl" style="margin-left:5px">
                     <button tabindex="6" type="submit" ng-disabled="disableSearchButton()">Search</button>
                 </article>
+            -->
+                <article class="fl" style="margin-left:5px">
+                    <button tabindex="6" type="submit" ng-click="retriveAndViewObs()">View Long. Obs</button>
+                </article>
             </form>
-            <article class="fl" style="margin-left:5px">
-                <button tabindex="6" type="submit" ng-click="retriveAndViewObs()">View Long. Obs</button>
-            </article>
     </div>
 	
     <div ng-if="resultsPresent()" class="registraition-search-results-container">
