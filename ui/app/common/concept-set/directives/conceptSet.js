@@ -261,28 +261,47 @@ angular.module('bahmni.common.conceptSet')
                 var autoFillFormValues = function (flattenedObs,fields) {
                     flattenedObs.forEach(function (obs) {
                         fields.forEach(function (autofillfield) {
-                        
-                        if(obs.concept.name == autofillfield.field && autofillfield.fieldValue == "AutoFill" && 
+
+                        if(obs.concept.name == autofillfield.field && autofillfield.fieldValue.isAutoFill && 
                             (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date" || obs.concept.dataType =="Text" || obs.concept.dataType == "Boolean")){
                             observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
+                                var index_ = autofillfield.fieldValue.scopedEncouter;
                                 if(!_.isEmpty(response.data)){
-                                    obs.value = response.data[0].value;
+                                    console.log(response);
+                                    var formValue = response.data[index_].value;
+                                    if(formValue){
+                                        obs.value = formValue;
+                                    }
+                                    if(obs.value && obs.value != undefined){
+                                        appService.setIsFieldAutoFilled(true);
+                                    }
                                 }
-                                
                             });
                         }
-                        if(obs.concept.name == autofillfield.field && obs.concept.dataType == "Coded" && autofillfield.fieldValue == "AutoFill"){
+                        if(obs.concept.name == autofillfield.field && obs.concept.dataType == "Coded" && autofillfield.fieldValue.isAutoFill){
                             let Answer = {};
                             
                             observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
-                                
+                                var index = autofillfield.fieldValue.scopedEncouter;
+                                var formValue_ = response.data[autofillfield.fieldValue.scopedEncouter].value;
                                 if(!_.isEmpty(response.data)){
                                 obs.possibleAnswers.forEach(function (answer){
-                                    if(answer.displayString == response.data[0].value.name)
-                                        Answer = answer;
+                                    if(formValue_)
+                                        if(answer.displayString == response.data[index].value.name){
+                                        
+                                                Answer = answer;
+                                            if(obs.value && obs.value != undefined){
+                                                appService.setIsFieldAutoFilled(true);
+                                            }
+                                        }
                                 });
+
+                              if(formValue_){
                                 obs.value = Answer;
-                                
+                                if(!_.isEmpty(obs.value)){
+                                    appService.setIsFieldAutoFilled(true);
+                                }
+                              }
                             }
                             });
                         }
@@ -300,23 +319,22 @@ angular.module('bahmni.common.conceptSet')
                         var obsValue;
                         var clonedObsInSameGroup;
                         var conceptNaming;
-
-                        //------------------- Pheko - Phenduka ---------------------------------
-
-                        if(!appService.getSavedFormCheck()){
                         
+                        //------------------- Pheko - Phenduka ---------------------------------
+                       if(!appService.getIsFieldAutoFilled()){
+                           
+                        if(!appService.getSavedFormCheck()){
+                            
                             appService.setFormName($scope.conceptSetName);
-    
                             autoFillFormValues(flattenedObs,fields);
                         }
                             
     
                         if(appService.getSavedFormCheck() && appService.getFormName != $scope.conceptSetName){
-                            
                             appService.setFormName($scope.conceptSetName);
-    
                             autoFillFormValues(flattenedObs,fields);
                         }
+                    }
 
                         //----------------------------------------------------------------------
 
@@ -498,6 +516,8 @@ angular.module('bahmni.common.conceptSet')
                 };
                 var init = function () {
                     appService.setActive(false);
+                    appService.setIsFieldAutoFilled(false);
+                    //appService.setIsFieldAutoFilled(false);
 
                             // Hack to autocalculate estimated date of delivery (EDD) once last menstrual period entered --- Pheko
                             var edd;
@@ -535,6 +555,35 @@ angular.module('bahmni.common.conceptSet')
 
                     // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
                     // Will refactor accordingly
+                    $scope.$watch(function() { 
+                        if($scope.conceptSetName === "HIV Treatment and Care Progress Template"){
+                            try {
+                                var patientAge = $scope.patient.age;
+                                $scope.observations.forEach((obs)=>{
+                                        obs.groupMembers.forEach(member =>{
+                                            if(member.label === "WEIGHT"){
+                                                    if(patientAge < 15)
+                                                        member.conceptUIConfig.required = true;
+                                            }
+                                        })
+                                });
+                                } catch (error) { }
+                       }
+                        if($scope.conceptSetName === "Vitals"){
+                            try {
+                                var patientAge = $scope.patient.age;
+                                $scope.observations.forEach((obs)=>{
+                                        obs.groupMembers.forEach(member =>{
+                                            if(member.label === "WEIGHT"){
+                                                    if(patientAge < 15)
+                                                        member.conceptUIConfig.required = true;
+                                            }
+                                        })
+                                });
+                                } catch (error) { }
+                            }
+                        
+                    });
                     if (conceptSetName == "HIV Treatment and Care Progress Template") {
                         return $q.all([conceptSetService.getConcept({
                             name: conceptSetName,
@@ -622,7 +671,6 @@ angular.module('bahmni.common.conceptSet')
                                                     }
                                                     if(element.selectedObs.RH){
                                                         appService.setRegimen("RH-");
-                                                        console.log(element.selectedObs);
                                                         appService.setIsOrderRegimenInserted(true); 
                                                     }
                                                     if(element.selectedObs.RHZ){
@@ -665,6 +713,26 @@ angular.module('bahmni.common.conceptSet')
                                    }
                                 } catch (error) { }
                            }
+                           if($scope.conceptSetName === "Nutritional Values"){
+                            try {
+                                var patientAge = $scope.patient.age.years;
+                                $scope.observations.forEach((obs)=>{
+                                    if(obs.label === "Nutritional Values")
+                                        obs.groupMembers.forEach(member =>{
+                                            if(member.label === "WEIGHT"){
+                                                if(patientAge < 15)
+                                                    member.conceptUIConfig.required = true;
+                                            }
+                                            if(member.label === "HEIGHT"){
+                                                if(patientAge < 25)
+                                                {
+                                                    appService.setIsFieldAutoFilled(true);
+                                                }
+                                            }
+                                        })
+                                });
+                            } catch (error) { }
+                       }
                         });
                         return conceptSetService.getConcept({
                             name: conceptSetName,
