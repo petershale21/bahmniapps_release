@@ -265,10 +265,11 @@ angular.module('bahmni.common.conceptSet')
                         if(obs.concept.name == autofillfield.field && autofillfield.fieldValue.isAutoFill && 
                             (obs.concept.dataType == "Numeric" || obs.concept.dataType == "Date" || obs.concept.dataType =="Text" || obs.concept.dataType == "Boolean")){
                             observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
-                                var index_ = autofillfield.fieldValue.scopedEncouter;
-                                if(!_.isEmpty(response.data)){
-                                    console.log(response);
+                                var index_ = autofillfield.fieldValue.scopedEncounter;
+                                if(!_.isEmpty(response.data) && response.data[index_]){
+
                                     var formValue = response.data[index_].value;
+
                                     if(formValue){
                                         obs.value = formValue;
                                     }
@@ -278,13 +279,14 @@ angular.module('bahmni.common.conceptSet')
                                 }
                             });
                         }
+
                         if(obs.concept.name == autofillfield.field && obs.concept.dataType == "Coded" && autofillfield.fieldValue.isAutoFill){
                             let Answer = {};
                             
                             observationsService.fetch($scope.patient.uuid, obs.concept.name).then(function (response) {
                                 var index = autofillfield.fieldValue.scopedEncouter;
-                                var formValue_ = response.data[autofillfield.fieldValue.scopedEncouter].value;
-                                if(!_.isEmpty(response.data)){
+                                var formValue_ = response.data[autofillfield.fieldValue.scopedEncounter].value;
+                                if(!_.isEmpty(response.data && response.data[index])){
                                 obs.possibleAnswers.forEach(function (answer){
                                     if(formValue_)
                                         if(answer.displayString == response.data[index].value.name){
@@ -320,23 +322,25 @@ angular.module('bahmni.common.conceptSet')
                         var clonedObsInSameGroup;
                         var conceptNaming;
                         
-                        //------------------- Pheko - Phenduka ---------------------------------
+                        //------------------- Pheko - Phenduka  Calling AutoFull---------------------------------
                        if(!appService.getIsFieldAutoFilled()){
-                           
-                        if(!appService.getSavedFormCheck()){
-                            
-                            appService.setFormName($scope.conceptSetName);
-                            autoFillFormValues(flattenedObs,fields);
-                        }
-                            
-    
-                        if(appService.getSavedFormCheck() && appService.getFormName != $scope.conceptSetName){
-                            appService.setFormName($scope.conceptSetName);
-                            autoFillFormValues(flattenedObs,fields);
-                        }
+                           try {
+                                if(!appService.getSavedFormCheck()){
+                                
+                                    appService.setFormName($scope.conceptSetName);
+                                    autoFillFormValues(flattenedObs,fields);
+                                }
+                                    
+            
+                                if(appService.getSavedFormCheck() && appService.getFormName != $scope.conceptSetName){
+                                    appService.setFormName($scope.conceptSetName);
+                                    autoFillFormValues(flattenedObs,fields);
+                                }
+                               
+                           } catch (error) {
+                               
+                           }
                     }
-
-                        //----------------------------------------------------------------------
 
                         flattenedObs.forEach(function (obs) {
                             if (clonedObsInSameGroup != false && obs.concept.name == field || (field.field && obs.concept.name == field.field)) {
@@ -569,6 +573,7 @@ angular.module('bahmni.common.conceptSet')
                                 });
                                 } catch (error) { }
                        }
+                       //Functionality must be configurable, cutOffAge
                         if($scope.conceptSetName === "Vitals"){
                             try {
                                 var patientAge = $scope.patient.age;
@@ -724,7 +729,7 @@ angular.module('bahmni.common.conceptSet')
                                                     member.conceptUIConfig.required = true;
                                             }
                                             if(member.label === "HEIGHT"){
-                                                if(patientAge < 25)
+                                                if(patientAge < 18)
                                                 {
                                                     appService.setIsFieldAutoFilled(true);
                                                 }
