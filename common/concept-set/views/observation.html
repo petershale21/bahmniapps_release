@@ -169,7 +169,7 @@
                     </div>
 
                     <div ng-switch-when="datetime">
-                        <datetimepicker model="observation.value" observation="::observation" ng-blur="handleUpdate()" allow-future-dates="(observation.conceptUIConfig && observation.conceptUIConfig.allowFutureDates)" show-time="::true" illegal-value="!observation.isValid(atLeastOneValueIsSet, conceptSetRequired)"></datetimepicker>
+                        <datetimepicker onkeypress="return false" model="observation.value" observation="::observation" ng-blur="handleUpdate()" allow-future-dates="(observation.conceptUIConfig && observation.conceptUIConfig.allowFutureDates)" show-time="::true" illegal-value="!observation.isValid(atLeastOneValueIsSet, conceptSetRequired)"></datetimepicker>
                     </div>
 
                     <div ng-switch-when="grid">
