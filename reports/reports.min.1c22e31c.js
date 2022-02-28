@@ -1416,7 +1416,6 @@ angular.module('bahmni.common.appFramework')
             //**Setting a check field for autopopulations on forms */
             let isFormSaved = false;
             let savedFormName = '';
-            let isFieldAutoFilled = false;
 
 
 
@@ -1434,15 +1433,6 @@ angular.module('bahmni.common.appFramework')
             {
                 return savedFormName ;
             }
-            
-            this.setIsFieldAutoFilled   = function (_isFieldAutoFilled ){
-                isFieldAutoFilled  = _isFieldAutoFilled ;
-            }
-            this.getIsFieldAutoFilled = function()
-            {
-                return isFieldAutoFilled ;
-            }
-            
             //-------------------------------AHD Meds Flags------------------------------------
             let _AHD_Regimen = '';
             this.set_AHD_Regimen  = function (_ahd_regimen){
