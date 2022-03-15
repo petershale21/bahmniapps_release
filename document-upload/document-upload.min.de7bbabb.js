@@ -802,7 +802,6 @@ angular.module('bahmni.common.appFramework')
             }
             
         }]);
-
 'use strict';
 
 angular.module('bahmni.common.appFramework')
