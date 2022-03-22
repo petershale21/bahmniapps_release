@@ -1416,6 +1416,10 @@ angular.module('bahmni.common.appFramework')
             //**Setting a check field for autopopulations on forms */
             let isFormSaved = false;
             let savedFormName = '';
+            let isFieldAutoFilled = false;
+
+
+
             this.setSavedFormCheck = function (_isFormSaved ){
                 isFormSaved = _isFormSaved;
             }
@@ -1430,8 +1434,26 @@ angular.module('bahmni.common.appFramework')
             {
                 return savedFormName ;
             }
+            
+            this.setIsFieldAutoFilled   = function (_isFieldAutoFilled ){
+                isFieldAutoFilled  = _isFieldAutoFilled ;
+            }
+            this.getIsFieldAutoFilled = function()
+            {
+                return isFieldAutoFilled ;
+            }
+            
+            //-------------------------------AHD Meds Flags------------------------------------
+            let _AHD_Regimen = '';
+            this.set_AHD_Regimen  = function (_ahd_regimen){
+                _AHD_Regimen = _ahd_regimen;
+            }
+            this.get_AHD_Regimen = function()
+            {
+                return _AHD_Regimen;
+            }
+            
         }]);
-
 'use strict';
 
 angular.module('bahmni.common.appFramework')
@@ -2785,6 +2807,7 @@ angular.module('bahmni.common.patient')
             });
             return patient;
         };
+		
         this.generateIdentifier = function () {
             var openmrsUrl = Bahmni.Common.Constants.openmrsUrl;
             var data = {"identifierSourceName": "NewART Number MPI"};

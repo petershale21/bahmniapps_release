@@ -10,8 +10,13 @@
                     <input tabindex="5" id="to-date" date-converter type="date" max="{{::today}}" ng-model="toDate" class="dashboard-date-picker">
                 </article>
 
+            <!-- 
                 <article class="fl" style="margin-left:5px">
                     <button tabindex="6" type="submit" ng-disabled="disableSearchButton()">Search</button>
+                </article>
+            -->
+                <article class="fl" style="margin-left:5px">
+                    <button tabindex="6" type="submit" ng-click="retriveAndViewObs()">View Long. Obs</button>
                 </article>
             </form>
     </div>
@@ -47,5 +52,33 @@
             </tr>
             </tbody>
         </table>
+    </div>
+
+    <div ng-if="restResultsPresent()" class="registraition-search-results-container">
+        <table class="table">
+            <thead>
+            <tr>
+                <th><strong>Location</strong></th>
+				<th><strong>Encounter Date</strong></th>
+                <th><strong>Observation</strong></th>
+                <th><strong>Obs. Value</strong></th>
+            </tr>
+            </thead>
+            <tbody>
+                <tr ng-repeat="result in restResults">
+                    <td>{{::result.locationName}}</td>
+                    <td>{{::result.encounterDate}}</td>
+                    <td>{{::result.observationName}}</td>
+                    <td>{{::result.observationValue}}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="note-container no-search-results" ng-if="noResultsMessage">
+        <div class="note warning">
+            <div class="text">
+                <p>{{noResultsMessage | translate:patientIdentifier }}</p>
+            </div>
+        </div>
     </div>
 </div>
