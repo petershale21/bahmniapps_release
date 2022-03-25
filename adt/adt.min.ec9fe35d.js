@@ -2304,6 +2304,87 @@ Bahmni.Common.Domain.Diagnosis = function (codedAnswer, order, certainty, existi
 
 'use strict';
 
+(function () {
+    var DateUtil = Bahmni.Common.Util.DateUtil;
+    var Conditions = Bahmni.Common.Domain.Conditions = {};
+    var Condition = Bahmni.Common.Domain.Condition = function (data) {
+        data = data || {};
+        this.uuid = data.uuid;
+        this.concept = {
+            uuid: _.get(data, 'concept.uuid'),
+            shortName: _.get(data, 'concept.shortName'),
+            name: _.get(data, 'concept.name')
+        };
+        this.status = data.status;
+        this.onSetDate = data.onSetDate;
+        this.conditionNonCoded = data.conditionNonCoded;
+        this.voided = data.voided;
+        this.additionalDetail = data.additionalDetail;
+        this.isNonCoded = data.isNonCoded;
+        this.creator = data.creator;
+        this.previousConditionUuid = data.previousConditionUuid;
+        this.activeSince = data.onSetDate;
+    };
+    Condition.prototype = {};
+    Condition.prototype.toggleNonCoded = function () {
+        this.isNonCoded = !this.isNonCoded;
+    };
+    Condition.prototype.clearConcept = function () {
+        this.concept.uuid = undefined;
+    };
+    Condition.prototype.isValidConcept = function () {
+        return !(this.concept.name && !this.concept.uuid && !this.isNonCoded);
+    };
+    Condition.prototype.isValid = function () {
+        return this.status && ((this.concept.name && this.isNonCoded) || this.concept.uuid);
+    };
+    Condition.prototype.isActive = function () {
+        return this.status == 'ACTIVE';
+    };
+    Condition.prototype.displayString = function () {
+        return this.conditionNonCoded || this.concept.shortName || this.concept.name;
+    };
+    Condition.prototype.isEmpty = function () {
+        return !this.status && !this.concept.name && !(this.isNonCoded || this.concept.uuid)
+            && !this.onSetDate && !this.additionalDetail;
+    };
+
+    Condition.createFromDiagnosis = function (diagnosis) {
+        return new Condition({
+            concept: {
+                uuid: diagnosis.codedAnswer.uuid,
+                shortName: diagnosis.codedAnswer.shortName,
+                name: diagnosis.codedAnswer.name
+            },
+            status: 'ACTIVE',
+            onSetDate: DateUtil.today(),
+            conditionNonCoded: diagnosis.freeTextAnswer,
+            additionalDetail: diagnosis.comments,
+            voided: false
+        });
+    };
+
+    Conditions.fromConditionHistories = function (conditionsHistories) {
+        return _.map(conditionsHistories, function (conditionsHistory) {
+            var conditions = conditionsHistory.conditions;
+            return new Condition(_.last(_.sortBy(_.reject(conditions, 'endDate'), 'onSetDate')));
+        });
+    };
+
+    Conditions.getPreviousActiveCondition = function (condition, allConditions) {
+        if (condition.status == 'ACTIVE') {
+            return condition;
+        }
+        var previousCondition = _.find(allConditions, {uuid: condition.previousConditionUuid});
+        if (!previousCondition) {
+            return condition;
+        }
+        return Conditions.getPreviousActiveCondition(previousCondition, allConditions);
+    };
+})();
+
+'use strict';
+
 angular.module('bahmni.common.domain')
     .service('retrospectiveEntryService', ['$rootScope', '$bahmniCookieStore', function ($rootScope, $bahmniCookieStore) {
         var retrospectiveEntryService = this;
@@ -2396,6 +2477,71 @@ angular.module('bahmni.common.domain')
                 consultation.pastDiagnoses = diagnosis.pastDiagnoses;
                 consultation.savedDiagnosesFromCurrentEncounter = diagnosis.savedDiagnosesFromCurrentEncounter;
                 return consultation;
+            });
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.common.domain')
+    .service('conditionsService', ['$http', function ($http) {
+        this.save = function (conditions, patientUuid) {
+            var body = _.map(conditions, function (condition) {
+                return {
+                    uuid: condition.uuid,
+                    patientUuid: patientUuid,
+                    concept: condition.concept,
+                    conditionNonCoded: condition.conditionNonCoded,
+                    status: condition.status,
+                    onSetDate: condition.onSetDate,
+                    endDate: condition.endDate,
+                    endReason: condition.endReason,
+                    additionalDetail: condition.additionalDetail,
+                    voided: condition.voided,
+                    voidReason: condition.voidReason
+                };
+            });
+
+            return $http.post(Bahmni.Common.Constants.conditionUrl, body, {
+                withCredentials: true,
+                headers: {"Accept": "application/json", "Content-Type": "application/json"}
+            });
+        };
+        this.getConditionHistory = function (patientUuid) {
+            var params = {
+                patientUuid: patientUuid
+            };
+            return $http.get(Bahmni.Common.Constants.conditionHistoryUrl, {
+                params: params,
+                headers: {
+                    withCredentials: true
+                }
+            });
+        };
+        this.getFollowUpConditionConcept = function () {
+            return $http.get(Bahmni.Common.Constants.conceptSearchByFullNameUrl, {
+                params: {
+                    name: Bahmni.Common.Constants.followUpConditionConcept,
+                    v: "custom:(uuid,name:(name))"
+                },
+                cache: true
+            });
+        };
+        var getLatestActiveCondition = function (conditionHistories, latestCondition) {
+            var conditionHistory = _.find(conditionHistories, {
+                conceptUuid: latestCondition.concept.uuid,
+                conditionNonCoded: latestCondition.conditionNonCoded
+            });
+            return Bahmni.Common.Domain.Conditions.getPreviousActiveCondition(latestCondition, conditionHistory.conditions);
+        };
+        this.getConditions = function (patientUuid) {
+            return this.getConditionHistory(patientUuid).then(function (response) {
+                var conditionHistories = response.data;
+                var conditions = Bahmni.Common.Domain.Conditions.fromConditionHistories(conditionHistories);
+                _.forEach(conditions, function (condition) {
+                    condition.activeSince = getLatestActiveCondition(conditionHistories, condition).onSetDate;
+                });
+                return conditions;
             });
         };
     }]);
@@ -3035,170 +3181,6 @@ angular.module('bahmni.common.domain')
 
 'use strict';
 
-angular.module('bahmni.common.domain')
-    .factory('locationService', ['$http', '$bahmniCookieStore', function ($http, $bahmniCookieStore) {
-        var getAllByTag = function (tags, operator) {
-            return $http.get(Bahmni.Common.Constants.locationUrl, {
-                params: {s: "byTags", tags: tags || "", v: "default", operator: operator || "ALL"},
-                cache: true
-            });
-        };
-
-        var getByUuid = function (locationUuid) {
-            return $http.get(Bahmni.Common.Constants.locationUrl + "/" + locationUuid, {
-                cache: true
-            }).then(function (response) {
-                return response.data;
-            });
-        };
-
-        var getLoggedInLocation = function () {
-            var cookie = $bahmniCookieStore.get(Bahmni.Common.Constants.locationCookieName);
-            return getByUuid(cookie.uuid);
-        };
-
-        var getVisitLocation = function (locationUuid) {
-            return $http.get(Bahmni.Common.Constants.bahmniVisitLocationUrl + "/" + locationUuid, {
-                headers: {"Accept": "application/json"}
-            });
-        };
-
-        return {
-            getAllByTag: getAllByTag,
-            getLoggedInLocation: getLoggedInLocation,
-            getByUuid: getByUuid,
-            getVisitLocation: getVisitLocation
-        };
-    }]);
-
-'use strict';
-angular.module('bahmni.common.domain')
-    .factory('programService', ['$http', 'programHelper', 'appService', function ($http, programHelper, appService) {
-        var PatientProgramMapper = new Bahmni.Common.Domain.PatientProgramMapper();
-
-        var getAllPrograms = function () {
-            return $http.get(Bahmni.Common.Constants.programUrl, {params: {v: 'default'}}).then(function (response) {
-                var allPrograms = programHelper.filterRetiredPrograms(response.data.results);
-                _.forEach(allPrograms, function (program) {
-                    program.allWorkflows = programHelper.filterRetiredWorkflowsAndStates(program.allWorkflows);
-                    if (program.outcomesConcept) {
-                        program.outcomesConcept.setMembers = programHelper.filterRetiredOutcomes(program.outcomesConcept.setMembers);
-                    }
-                });
-                return allPrograms;
-            });
-        };
-
-        var enrollPatientToAProgram = function (patientUuid, programUuid, dateEnrolled, stateUuid, patientProgramAttributes, programAttributeTypes) {
-            var attributeFormatter = new Bahmni.Common.Domain.AttributeFormatter();
-            var req = {
-                url: Bahmni.Common.Constants.programEnrollPatientUrl,
-                content: {
-                    patient: patientUuid,
-                    program: programUuid,
-                    dateEnrolled: moment(dateEnrolled).format(Bahmni.Common.Constants.ServerDateTimeFormat),
-                    attributes: attributeFormatter.removeUnfilledAttributes(attributeFormatter.getMrsAttributes(patientProgramAttributes, (programAttributeTypes || [])))
-                },
-                headers: {"Content-Type": "application/json"}
-            };
-            if (!_.isEmpty(stateUuid)) {
-                req.content.states = [
-                    {
-                        state: stateUuid,
-                        startDate: moment(dateEnrolled).format(Bahmni.Common.Constants.ServerDateTimeFormat)
-                    }
-                ];
-            }
-            return $http.post(req.url, req.content, req.headers);
-        };
-
-        var getPatientPrograms = function (patientUuid, filterAttributesForProgramDisplayControl, patientProgramUuid) {
-            var params = {
-                v: "full",
-                patientProgramUuid: patientProgramUuid,
-                patient: patientUuid
-            };
-            return $http.get(Bahmni.Common.Constants.programEnrollPatientUrl, {params: params}).then(function (response) {
-                var patientPrograms = response.data.results;
-                return getProgramAttributeTypes().then(function (programAttributeTypes) {
-                    if (filterAttributesForProgramDisplayControl) {
-                        patientPrograms = programHelper.filterProgramAttributes(response.data.results, programAttributeTypes);
-                    }
-
-                    return programHelper.groupPrograms(patientPrograms);
-                });
-            });
-        };
-
-        var savePatientProgram = function (patientProgramUuid, content) {
-            var req = {
-                url: Bahmni.Common.Constants.programEnrollPatientUrl + "/" + patientProgramUuid,
-                content: content,
-                headers: {"Content-Type": "application/json"}
-            };
-            return $http.post(req.url, req.content, req.headers);
-        };
-
-        var deletePatientState = function (patientProgramUuid, patientStateUuid) {
-            var req = {
-                url: Bahmni.Common.Constants.programStateDeletionUrl + "/" + patientProgramUuid + "/state/" + patientStateUuid,
-                content: {
-                    "!purge": "",
-                    "reason": "User deleted the state."
-                },
-                headers: {"Content-Type": "application/json"}
-            };
-            return $http.delete(req.url, req.content, req.headers);
-        };
-
-        var getProgramAttributeTypes = function () {
-            return $http.get(Bahmni.Common.Constants.programAttributeTypes, {params: {v: 'custom:(uuid,name,description,datatypeClassname,datatypeConfig,concept)'}}).then(function (response) {
-                var programAttributesConfig = appService.getAppDescriptor().getConfigValue("program");
-
-                var mandatoryProgramAttributes = [];
-                for (var attributeName in programAttributesConfig) {
-                    if (programAttributesConfig[attributeName].required) {
-                        mandatoryProgramAttributes.push(attributeName);
-                    }
-                }
-                return new Bahmni.Common.Domain.AttributeTypeMapper().mapFromOpenmrsAttributeTypes(response.data.results, mandatoryProgramAttributes, programAttributesConfig).attributeTypes;
-            });
-        };
-
-        var updatePatientProgram = function (patientProgram, programAttributeTypes, dateCompleted) {
-            return savePatientProgram(patientProgram.uuid, PatientProgramMapper.map(patientProgram, programAttributeTypes, dateCompleted));
-        };
-
-        var getProgramStateConfig = function () {
-            var config = appService.getAppDescriptor().getConfigValue('programDisplayControl');
-            return config ? config.showProgramStateInTimeline : false;
-        };
-
-        var getEnrollmentInfoFor = function (patientUuid, representation) {
-            var params = {
-                patient: patientUuid,
-                v: representation
-            };
-            return $http.get(Bahmni.Common.Constants.programEnrollPatientUrl, { params: params }).then(function (response) {
-                return response.data.results;
-            });
-        };
-
-        return {
-            getAllPrograms: getAllPrograms,
-            enrollPatientToAProgram: enrollPatientToAProgram,
-            getPatientPrograms: getPatientPrograms,
-            savePatientProgram: savePatientProgram,
-            updatePatientProgram: updatePatientProgram,
-            deletePatientState: deletePatientState,
-            getProgramAttributeTypes: getProgramAttributeTypes,
-            getProgramStateConfig: getProgramStateConfig,
-            getEnrollmentInfoFor: getEnrollmentInfoFor
-        };
-    }]);
-
-'use strict';
-
 /* exported EncounterConfig */
 var EncounterConfig = (function () {
     function EncounterConfig (encounterTypes) {
@@ -3416,152 +3398,6 @@ Bahmni.DiagnosisMapper = function (diagnosisStatus) {
             }
         });
         return savedDiagnosesFromCurrentEncounter;
-    };
-};
-
-'use strict';
-var Bahmni = Bahmni || {};
-Bahmni.Common = Bahmni.Common || {};
-Bahmni.Common.UIControls = Bahmni.Common.UIControls || {};
-Bahmni.Common.UIControls.ProgramManagement = Bahmni.Common.UIControls.ProgramManagement || {};
-
-angular.module('bahmni.common.uicontrols.programmanagment', []);
-
-'use strict';
-
-angular.module('bahmni.common.uicontrols.programmanagment')
-    .service('programHelper', ['appService', function (appService) {
-        var self = this;
-        var programConfiguration = appService.getAppDescriptor().getConfig("program") && appService.getAppDescriptor().getConfig("program").value;
-
-        var isAttributeRequired = function (attribute) {
-            var attributeName = attribute.attributeType.display;
-            return programConfiguration && programConfiguration[attributeName] && programConfiguration[attributeName].required;
-        };
-
-        this.filterRetiredPrograms = function (programs) {
-            return _.filter(programs, function (program) {
-                return !program.retired;
-            });
-        };
-
-        this.filterRetiredWorkflowsAndStates = function (workflows) {
-            var allWorkflows = _.filter(workflows, function (workflow) {
-                return !workflow.retired;
-            });
-            _.forEach(allWorkflows, function (workflow) {
-                workflow.states = _.filter(workflow.states, function (state) {
-                    return !state.retired;
-                });
-            });
-            return allWorkflows;
-        };
-
-        this.filterRetiredOutcomes = function (outcomes) {
-            return _.filter(outcomes, function (outcome) {
-                return !outcome.retired;
-            });
-        };
-
-        var mapAttributes = function (attribute) {
-            attribute.name = attribute.attributeType.description ? attribute.attributeType.description : attribute.name;
-            attribute.value = attribute.value;
-            attribute.required = isAttributeRequired(attribute);
-        };
-        var mapPrograms = function (program) {
-            program.dateEnrolled = Bahmni.Common.Util.DateUtil.parseServerDateToDate(program.dateEnrolled);
-            program.dateCompleted = Bahmni.Common.Util.DateUtil.parseServerDateToDate(program.dateCompleted);
-            program.program.allWorkflows = self.filterRetiredWorkflowsAndStates(program.program.allWorkflows);
-            _.forEach(program.attributes, function (attribute) {
-                mapAttributes(attribute);
-            });
-        };
-
-        function shouldDisplayAllAttributes (programDisplayControlConfig) {
-            return (programDisplayControlConfig && programDisplayControlConfig['programAttributes'] == undefined) || programDisplayControlConfig == undefined;
-        }
-
-        this.filterProgramAttributes = function (patientPrograms, programAttributeTypes) {
-            var programDisplayControlConfig = appService.getAppDescriptor().getConfigValue('programDisplayControl');
-            var config = programDisplayControlConfig ? programDisplayControlConfig['programAttributes'] : [];
-            var configAttrList = [];
-            if (shouldDisplayAllAttributes(programDisplayControlConfig)) {
-                configAttrList = programAttributeTypes;
-            } else {
-                configAttrList = programAttributeTypes.filter(function (each) {
-                    return config && config.indexOf(each.name) !== -1;
-                });
-            }
-
-            if (_.isEmpty(configAttrList)) {
-                return patientPrograms.map(function (patientProgram) {
-                    patientProgram.attributes = [];
-                    return patientProgram;
-                });
-            }
-
-            patientPrograms.forEach(function (program) {
-                var attrsToBeDisplayed = [];
-
-                configAttrList.forEach(function (configAttr) {
-                    var attr = _.find(program.attributes, function (progAttr) {
-                        return progAttr.attributeType.display === configAttr.name;
-                    });
-
-                    attr = attr ? attr : {
-                        value: ""
-                    };
-                    attr.attributeType = configAttr;
-                    attr.attributeType.display = configAttr.name;
-                    attrsToBeDisplayed.push(attr);
-                });
-
-                program.attributes = attrsToBeDisplayed;
-            });
-            return patientPrograms;
-        };
-
-        this.groupPrograms = function (patientPrograms) {
-            var activePrograms = [];
-            var endedPrograms = [];
-            var groupedPrograms = {};
-            if (patientPrograms) {
-                var filteredPrograms = this.filterRetiredPrograms(patientPrograms);
-                _.forEach(filteredPrograms, function (program) {
-                    mapPrograms(program);
-                    if (program.dateCompleted) {
-                        endedPrograms.push(program);
-                    } else {
-                        activePrograms.push(program);
-                    }
-                });
-                groupedPrograms.activePrograms = _.sortBy(activePrograms, function (program) {
-                    return moment(program.dateEnrolled).toDate();
-                }).reverse();
-                groupedPrograms.endedPrograms = _.sortBy(endedPrograms, function (program) {
-                    return moment(program.dateCompleted).toDate();
-                }).reverse();
-            }
-            return groupedPrograms;
-        };
-    }]);
-
-
-'use strict';
-
-Bahmni.Common.Domain.PatientProgramMapper = function () {
-    this.map = function (patientProgram, programAttributeTypes, dateCompleted) {
-        var attributeFormatter = new Bahmni.Common.Domain.AttributeFormatter();
-        return {
-            dateEnrolled: moment(Bahmni.Common.Util.DateUtil.getDateWithoutTime(patientProgram.dateEnrolled)).format(Bahmni.Common.Constants.ServerDateTimeFormat),
-            states: patientProgram.states,
-            uuid: patientProgram.uuid,
-            dateCompleted: dateCompleted ? moment(dateCompleted).format(Bahmni.Common.Constants.ServerDateTimeFormat) : null,
-            outcome: patientProgram.outcomeData ? patientProgram.outcomeData.uuid : null,
-            attributes: attributeFormatter.getMrsAttributesForUpdate(patientProgram.patientProgramAttributes, programAttributeTypes, patientProgram.attributes),
-            voided: !!patientProgram.voided,
-            voidReason: patientProgram.voidReason
-        };
     };
 };
 
@@ -3958,6 +3794,7 @@ angular.module('bahmni.common.conceptSet')
                 };
 
                 //helper function - perfoms the autofilling - Pheko - Phenduka
+                //helper function - perfoms the autofilling - Pheko - Phenduka
                 var fillingformValuesOnPreviousEncouter = function(flattenedObs,fields)
                 {   
                     flattenedObs.forEach(function (obs) {
@@ -4000,27 +3837,19 @@ angular.module('bahmni.common.conceptSet')
 
                                                                                     obs.value = response.data[0].value;
 
-                                                                                    if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                            obs.disabled = true;
-                                                                                    $scope.AutoFilledFields.push(obs.concept.name);
+                                                                                    $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                                 }
                                                                             }
                                                                             else if(!$rootScope.retrospectiveEntry){
                                                                                 obs.value = response.data[0].value;
                                                                                 
-                                                                                if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                     obs.disabled = true;
-                                                                                
-                                                                                $scope.AutoFilledFields.push(obs.concept.name);
+                                                                                $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                             }
                                                                         }
                                                                         else if(autofillfield.fieldValue.enableDefaultValue){
                                                                             obs.value = response.data[0].value;
-                                                                            
-                                                                            if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                obs.disabled = true;
 
-                                                                            $scope.AutoFilledFields.push(obs.concept.name);
+                                                                            $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                         }
                                                                 });
                                                             }
@@ -4038,19 +3867,14 @@ angular.module('bahmni.common.conceptSet')
     
                                                         if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                             obs.value = response.data[0].value; 
-                                                            if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                obs.disabled = true;
 
-                                                            $scope.AutoFilledFields.push(obs.concept.name);
+                                                            $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                         }
                                                     }
                                                     else if(!$rootScope.retrospectiveEntry){
                                                         obs.value = response.data[0].value;
-
-                                                        if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                            obs.disabled = true;
                                                         
-                                                        $scope.AutoFilledFields.push(obs.concept.name);
+                                                        $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                     }
                                                 }
                                             }
@@ -4064,20 +3888,14 @@ angular.module('bahmni.common.conceptSet')
 
                                                     if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                         obs.value = response.data[0].value;
-
-                                                        if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                            obs.disabled = true;
                                                         
-                                                        $scope.AutoFilledFields.push(obs.concept.name);
+                                                        $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                     }
                                                 }
                                                 else if(!$rootScope.retrospectiveEntry){
                                                     obs.value = response.data[0].value;
                                                     
-                                                    if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                        obs.disabled = true;
-                                                    
-                                                    $scope.AutoFilledFields.push(obs.concept.name);
+                                                    $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                 }
                                             }
                                         }
@@ -4123,18 +3941,14 @@ angular.module('bahmni.common.conceptSet')
                                                                                     
                                                                                     if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                                                         obs.value = Answer;
-                                                                              
-                                                                                        if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                            obs.disabled = true;
-                                                                                        $scope.AutoFilledFields.push(obs.concept.name);
+
+                                                                                        $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                                     }
                                                                                 }
                                                                                 else if(!$rootScope.retrospectiveEntry){
                                                                                     obs.value = Answer;
-                                                                                    if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                        obs.disabled = true;
                                                                                     
-                                                                                    $scope.AutoFilledFields.push(obs.concept.name);
+                                                                                    $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                                 }
                                                                             }
                                                                         }
@@ -4142,11 +3956,8 @@ angular.module('bahmni.common.conceptSet')
                                                                             Answer = answer;
                                                                            
                                                                             obs.value = Answer;
-                                                                            
-                                                                            if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                obs.disabled = true;
 
-                                                                            $scope.AutoFilledFields.push(obs.concept.name);
+                                                                            $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                         }
                                                                     });
                                                                 }
@@ -4165,20 +3976,14 @@ angular.module('bahmni.common.conceptSet')
 
                                                             if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                                 obs.value = Answer;
-                                                                
-                                                                if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                    obs.disabled = true;
-                                                                $scope.AutoFilledFields.push(obs.concept.name);
+                                                            
+                                                                $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                             }
                                                         }
                                                         else if(!$rootScope.retrospectiveEntry){
                                                             obs.value = Answer;
-                                                            
-                                                            
-                                                            if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                obs.disabled = true;
 
-                                                            $scope.AutoFilledFields.push(obs.concept.name);
+                                                            $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                         }
                                                     }
                                                 
@@ -4193,19 +3998,13 @@ angular.module('bahmni.common.conceptSet')
                                                                 
                                                                 if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                                     obs.value = Answer;
-                                                                    
-                                                                    if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                        obs.disabled = true;
-                                                                    $scope.AutoFilledFields.push(obs.concept.name);
+                                                                    $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                 }
                                                             }
                                                             else if(!$rootScope.retrospectiveEntry){
                                                                 obs.value = Answer;
                                                               
-                                                                
-                                                                if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                    obs.disabled = true;
-                                                                $scope.AutoFilledFields.push(obs.concept.name);
+                                                                $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                             }
                                                         }
                                                     
@@ -4225,7 +4024,7 @@ angular.module('bahmni.common.conceptSet')
                     if(!_.isEmpty($scope.AutoFilledFields))
                     $scope.AutoFilledFields.forEach((__autofield)=>{
                         fields.forEach((__field)=>{
-                            if(__field.field == __autofield){
+                            if(__field.field == __autofield.conceptName){
                                 return;
                             }
                         });
@@ -4637,9 +4436,11 @@ angular.module('bahmni.common.conceptSet')
                                 $scope.observations.forEach((obs)=>{
                                     if(obs.label === "Nutritional Values")
                                         obs.groupMembers.forEach(member =>{
+                                            member.parentForm = "Nutritional Values";
                                             if(member.label === "WEIGHT"){
-                                                if(patientAge < 15)
-                                                    member.conceptUIConfig.required = true;
+                                                if(patientAge < 15){
+                                                    member.conceptUIConfig.required = member.isChecked ? false : true;
+                                                }
                                             }
                                             if(member.label === "HEIGHT"){
                                                 $scope.AutopopulateHeight = patientAge >= 18 ? true : false;
@@ -4838,6 +4639,10 @@ angular.module('bahmni.common.conceptSet')
                     lastObservationByLabel.showAddMoreButton = function () { return true; };
                     observation.hidden = true;
                 };
+
+                scope.isNotMandadory = function(observation){
+                    console.log(observation)
+                }
 
                 scope.isClone = function (observation, parentObservation) {
                     if (parentObservation && parentObservation.groupMembers) {
@@ -7674,25 +7479,6 @@ angular.module('bahmni.common.uiHelper')
 'use strict';
 
 angular.module('bahmni.common.uiHelper')
-    .directive('ngConfirmClick', function () {
-        var link = function (scope, element, attr) {
-            var msg = attr.confirmMessage || "Are you sure?";
-            var clickAction = attr.ngConfirmClick;
-            element.bind('click', function () {
-                if (window.confirm(msg)) {
-                    scope.$apply(clickAction);
-                }
-            });
-        };
-        return {
-            restrict: 'A',
-            link: link
-        };
-    });
-
-'use strict';
-
-angular.module('bahmni.common.uiHelper')
     .directive('monthyearpicker', ['$translate', function ($translate) {
         var link = function ($scope) {
             var monthNames = $translate.instant('MONTHS');
@@ -7788,321 +7574,6 @@ angular.module('bahmni.common.uiHelper')
     });
 
 'use strict';
-
-angular.module('bahmni.common.uiHelper')
-    .directive('singleClick', function () {
-        var ignoreClick = false;
-        var link = function (scope, element) {
-            var clickHandler = function () {
-                if (ignoreClick) {
-                    return;
-                }
-                ignoreClick = true;
-                scope.singleClick().finally(function () {
-                    ignoreClick = false;
-                });
-            };
-
-            element.on('click', clickHandler);
-
-            scope.$on("$destroy", function () {
-                element.off('click', clickHandler);
-            });
-        };
-        return {
-            scope: {
-                singleClick: '&'
-            },
-            restrict: 'A',
-            link: link
-        };
-    });
-
-'use strict';
-
-angular.module('bahmni.common.uiHelper')
-.directive('bahmniAutocomplete', ['$translate', function ($translate) {
-    var link = function (scope, element, attrs, ngModelCtrl) {
-        var source = scope.source();
-        var responseMap = scope.responseMap && scope.responseMap();
-        var onSelect = scope.onSelect();
-        var onEdit = scope.onEdit && scope.onEdit();
-        var minLength = scope.minLength || 2;
-        var formElement = element[0];
-        var validationMessage = scope.validationMessage || $translate.instant("SELECT_VALUE_FROM_AUTOCOMPLETE_DEFAULT_MESSAGE");
-
-        var validateIfNeeded = function (value) {
-            if (!scope.strictSelect) {
-                return;
-            }
-            scope.isInvalid = (value !== scope.selectedValue);
-            if (_.isEmpty(value)) {
-                scope.isInvalid = false;
-            }
-        };
-
-        scope.$watch('initialValue', function () {
-            if (scope.initialValue) {
-                scope.selectedValue = scope.initialValue;
-                scope.isInvalid = false;
-            }
-        });
-
-        element.autocomplete({
-            autofocus: true,
-            minLength: minLength,
-            source: function (request, response) {
-                source({elementId: attrs.id, term: request.term, elementType: attrs.type}).then(function (data) {
-                    var results = responseMap ? responseMap(data) : data;
-                    response(results);
-                });
-            },
-            select: function (event, ui) {
-                scope.selectedValue = ui.item.value;
-                ngModelCtrl.$setViewValue(ui.item.value);
-                if (onSelect != null) {
-                    onSelect(ui.item);
-                }
-                validateIfNeeded(ui.item.value);
-                if (scope.blurOnSelect) {
-                    element.blur();
-                }
-                scope.$apply();
-                scope.$eval(attrs.ngDisabled);
-                scope.$apply();
-                return true;
-            },
-            search: function (event, ui) {
-                if (onEdit != null) {
-                    onEdit(ui.item);
-                }
-                var searchTerm = $.trim(element.val());
-                validateIfNeeded(searchTerm);
-                if (searchTerm.length < minLength) {
-                    event.preventDefault();
-                }
-            }
-        });
-        var changeHanlder = function (e) {
-            validateIfNeeded(element.val());
-        };
-
-        var keyUpHandler = function (e) {
-            validateIfNeeded(element.val());
-            scope.$apply();
-        };
-
-        element.on('change', changeHanlder);
-        element.on('keyup', keyUpHandler);
-
-        scope.$watch('isInvalid', function () {
-            ngModelCtrl.$setValidity('selection', !scope.isInvalid);
-            formElement.setCustomValidity(scope.isInvalid ? validationMessage : '');
-        });
-
-        scope.$on("$destroy", function () {
-            element.off('change', changeHanlder);
-            element.off('keyup', keyUpHandler);
-        });
-    };
-
-    return {
-        link: link,
-        require: 'ngModel',
-        scope: {
-            source: '&',
-            responseMap: '&?',
-            onSelect: '&',
-            onEdit: '&?',
-            minLength: '=?',
-            blurOnSelect: '=?',
-            strictSelect: '=?',
-            validationMessage: '@',
-            isInvalid: "=?",
-            initialValue: "=?"
-        }
-    };
-}]);
-
-'use strict';
-
-angular.module('bahmni.common.uiHelper')
-    .directive('nonBlank', function () {
-        return function ($scope, element, attrs) {
-            var addNonBlankAttrs = function () {
-                element.attr({'required': 'required'});
-            };
-
-            var removeNonBlankAttrs = function () {
-                element.removeAttr('required');
-            };
-
-            if (!attrs.nonBlank) {
-                return addNonBlankAttrs(element);
-            }
-
-            $scope.$watch(attrs.nonBlank, function (value) {
-                return value ? addNonBlankAttrs() : removeNonBlankAttrs();
-            });
-        };
-    })
-    .directive('datepicker', function () {
-        var link = function ($scope, element, attrs, ngModel) {
-            var maxDate = attrs.maxDate;
-            var minDate = attrs.minDate || "-120y";
-            var format = attrs.dateFormat || 'dd-mm-yy';
-            element.datepicker({
-                changeYear: true,
-                changeMonth: true,
-                maxDate: maxDate,
-                minDate: minDate,
-                yearRange: 'c-120:c+120',
-                dateFormat: format,
-                onSelect: function (dateText) {
-                    $scope.$apply(function () {
-                        ngModel.$setViewValue(dateText);
-                    });
-                }
-            });
-        };
-
-        return {
-            require: 'ngModel',
-            link: link
-        };
-    })
-    .directive('myAutocomplete', ['$parse', function ($parse) {
-        var link = function (scope, element, attrs, ngModelCtrl) {
-            var ngModel = $parse(attrs.ngModel);
-            var source = scope.source();
-            var responseMap = scope.responseMap();
-            var onSelect = scope.onSelect();
-
-            element.autocomplete({
-                autofocus: true,
-                minLength: 2,
-                source: function (request, response) {
-                    source(attrs.id, request.term, attrs.itemType).then(function (data) {
-                        var results = responseMap ? responseMap(data.data) : data.data;
-                        response(results);
-                    });
-                },
-                select: function (event, ui) {
-                    scope.$apply(function (scope) {
-                        ngModelCtrl.$setViewValue(ui.item.value);
-                        scope.$eval(attrs.ngChange);
-                        if (onSelect != null) {
-                            onSelect(ui.item);
-                        }
-                    });
-                    return true;
-                },
-                search: function (event) {
-                    var searchTerm = $.trim(element.val());
-                    if (searchTerm.length < 2) {
-                        event.preventDefault();
-                    }
-                }
-            });
-        };
-        return {
-            link: link,
-            require: 'ngModel',
-            scope: {
-                source: '&',
-                responseMap: '&',
-                onSelect: '&'
-            }
-        };
-    }])
-    .directive('bmForm', ['$timeout', function ($timeout) {
-        var link = function (scope, elem, attrs) {
-            $timeout(function () {
-                $(elem).unbind('submit').submit(function (e) {
-                    var formScope = scope.$parent;
-                    var formName = attrs.name;
-                    e.preventDefault();
-                    if (scope.autofillable) {
-                        $(elem).find('input').trigger('change');
-                    }
-                    if (formScope[formName].$valid) {
-                        formScope.$apply(attrs.ngSubmit);
-                        $(elem).removeClass('submitted-with-error');
-                    } else {
-                        $(elem).addClass('submitted-with-error');
-                    }
-                });
-            }, 0);
-        };
-        return {
-            link: link,
-            require: 'form',
-            scope: {
-                autofillable: "="
-            }
-        };
-    }])
-    .directive('patternValidate', ['$timeout', function ($timeout) {
-        return function ($scope, element, attrs) {
-            var addPatternToElement = function () {
-                if ($scope.fieldValidation && $scope.fieldValidation[attrs.id]) {
-                    element.attr({"pattern": $scope.fieldValidation[attrs.id].pattern, "title": $scope.fieldValidation[attrs.id].errorMessage, "type": "text"});
-                }
-            };
-
-            $timeout(addPatternToElement);
-        };
-    }])
-    .directive('validateOn', function () {
-        var link = function (scope, element, attrs, ngModelCtrl) {
-            var validationMessage = attrs.validationMessage || 'Please enter a valid detail';
-
-            var setValidity = function (value) {
-                var valid = value ? true : false;
-                ngModelCtrl.$setValidity('blank', valid);
-                element[0].setCustomValidity(!valid ? validationMessage : '');
-            };
-            scope.$watch(attrs.validateOn, setValidity, true);
-        };
-
-        return {
-            link: link,
-            require: 'ngModel'
-        };
-    });
-
-'use strict';
-
-angular.module('bahmni.common.uiHelper')
-    .directive('singleSubmit', function () {
-        var ignoreSubmit = false;
-        var link = function (scope, element) {
-            var submitHandler = function () {
-                if (ignoreSubmit) {
-                    return;
-                }
-                ignoreSubmit = true;
-                scope.singleSubmit().finally(function () {
-                    ignoreSubmit = false;
-                });
-            };
-
-            element.on('submit', submitHandler);
-
-            scope.$on("$destroy", function () {
-                element.off('submit', submitHandler);
-            });
-        };
-        return {
-            scope: {
-                singleSubmit: '&'
-            },
-            restrict: 'A',
-            link: link
-        };
-    });
-
-'use strict';
 var Bahmni = Bahmni || {};
 Bahmni.Common = Bahmni.Common || {};
 Bahmni.Common.Logging = Bahmni.Common.Logging || {};
@@ -8166,6 +7637,45 @@ angular.module('bahmni.common.logging')
             log: log
         };
     });
+
+'use strict';
+angular.module('bahmni.common.logging')
+    .service('auditLogService', ['$http', '$translate', 'configurationService', function ($http, $translate, configurationService) {
+        var DateUtil = Bahmni.Common.Util.DateUtil;
+
+        var convertToLocalDate = function (date) {
+            var localDate = DateUtil.parseLongDateToServerFormat(date);
+            return DateUtil.getDateTimeInSpecifiedFormat(localDate, 'MMMM Do, YYYY [at] h:mm:ss A');
+        };
+
+        this.getLogs = function (params) {
+            params = params || {};
+            return $http.get(Bahmni.Common.Constants.auditLogUrl, {params: params}).then(function (response) {
+                return response.data.map(function (log) {
+                    log.dateCreated = convertToLocalDate(log.dateCreated);
+                    var entity = log.message ? log.message.split("~")[1] : undefined;
+                    log.params = entity ? JSON.parse(entity) : entity;
+                    log.message = log.message.split("~")[0];
+                    log.displayMessage = $translate.instant(log.message, log);
+                    return log;
+                });
+            });
+        };
+
+        this.log = function (patientUuid, eventType, messageParams, module) {
+            return configurationService.getConfigurations(['enableAuditLog']).then(function (result) {
+                if (result.enableAuditLog) {
+                    var params = {};
+                    params.patientUuid = patientUuid;
+                    params.eventType = Bahmni.Common.AuditLogEventDetails[eventType].eventType;
+                    params.message = Bahmni.Common.AuditLogEventDetails[eventType].message;
+                    params.message = messageParams ? params.message + '~' + JSON.stringify(messageParams) : params.message;
+                    params.module = module;
+                    return $http.post(Bahmni.Common.Constants.auditLogUrl, params, {withCredentials: true});
+                }
+            });
+        };
+    }]);
 
 var Bahmni = Bahmni || {};
 Bahmni.Common = Bahmni.Common || {};
@@ -8869,172 +8379,6 @@ angular.module('bahmni.common.displaycontrol.observation', ['bahmni.common.conce
 'use strict';
 
 angular.module('bahmni.common.displaycontrol.observation')
-    .service('formHierarchyService', ['formService', function (formService) {
-        var self = this;
-
-        self.build = function (observations) {
-            var obs = self.preProcessMultipleSelectObsToObs(observations);
-            obs = self.createDummyObsGroupForObservationsForForm(obs);
-            self.createDummyObsGroupForSectionsForForm(obs);
-        };
-
-        self.preProcessMultipleSelectObsToObs = function (observations) {
-            _.forEach(observations, function (obs) {
-                _.forEach(obs.value, function (value, index) {
-                    if (value.type == "multiSelect") {
-                        obs.value.push(value.groupMembers[0]);
-                        obs.value.splice(index, 1);
-                    }
-                });
-            });
-            return observations;
-        };
-
-        self.createDummyObsGroupForObservationsForForm = function (observations) {
-            _.forEach(observations, function (obs) {
-                var newValues = [];
-                _.forEach(obs.value, function (value) {
-                    if (!value.formFieldPath) {
-                        newValues.push(value);
-                        return;
-                    }
-
-                    var dummyObsGroup = {
-                        "groupMembers": [],
-                        "concept": {
-                            "shortName": "",
-                            "conceptClass": null
-                        },
-                        "encounterUuid": ""
-                    };
-
-                    dummyObsGroup.concept.shortName = value.formFieldPath.split('.')[0];
-                    dummyObsGroup.encounterUuid = value.encounterUuid;
-                    var previousDummyObsGroupFound;
-                    _.forEach(newValues, function (newValue) {
-                        if (dummyObsGroup.concept.shortName == newValue.concept.shortName) {
-                            newValue.groupMembers.push(value);
-                            previousDummyObsGroupFound = true;
-                        }
-                    });
-
-                    if (previousDummyObsGroupFound) {
-                        return;
-                    }
-
-                    dummyObsGroup.groupMembers.push(value);
-                    newValues.push(dummyObsGroup);
-                });
-
-                obs.value = newValues;
-            });
-
-            return observations;
-        };
-
-        self.getFormVersion = function (members) {
-            var formVersion;
-            _.forEach(members, function (member) {
-                if (member.formFieldPath) {
-                    formVersion = member.formFieldPath.split('.')[1].split('/')[0];
-                    return false;
-                }
-            });
-            return formVersion;
-        };
-
-        self.getMemberFromFormByFormFieldPath = function (members, id) {
-            return _.filter(members, function (member) {
-                return member.formFieldPath.split('.')[1].split('/')[1].split('-')[0] == id;
-            });
-        };
-
-        self.getFormByFormName = function (formList, formName, formVersion) {
-            return _.find(formList, function (form) {
-                return form.name == formName && form.version == formVersion;
-            });
-        };
-
-        self.parseSection = function (members, controls, value) {
-            var sectionIsEmpty = true;
-            _.forEach(controls, function (control) {
-                var dummyObsGroup = {
-                    "groupMembers": [],
-                    "concept": {
-                        "shortName": "",
-                        "conceptClass": null
-                    }
-                };
-                if (control.type == "section") {
-                    dummyObsGroup.concept.shortName = control.label.value;
-                    value.groupMembers.push(dummyObsGroup);
-                    if (!self.parseSection(members, control.controls, dummyObsGroup)) {
-                        value.groupMembers.pop();
-                    } else {
-                        sectionIsEmpty = false;
-                    }
-                } else {
-                    var member = self.getMemberFromFormByFormFieldPath(members, control.id);
-                    if (member.length != 0) {
-                        if (member[0].formFieldPath.split('-')[1] != 0) {
-                            _.reverse(member);
-                        }
-                        _.map(member, function (m) {
-                            value.groupMembers.push(m);
-                        });
-                        sectionIsEmpty = false;
-                    }
-                }
-            });
-            if (sectionIsEmpty) {
-                return null;
-            }
-            return value;
-        };
-
-        self.createSectionForSingleForm = function (obsFromSameForm, formDetails) {
-            var members = obsFromSameForm.groupMembers.slice();
-            obsFromSameForm.groupMembers.splice(0, obsFromSameForm.groupMembers.length);
-
-            return self.parseSection(members, formDetails.controls, obsFromSameForm);
-        };
-
-        self.createDummyObsGroupForSectionsForForm = function (bahmniObservations) {
-            if (_.isEmpty(bahmniObservations)) {
-                return;
-            }
-
-            formService.getAllForms().then(function (response) {
-                var allForms = response.data;
-                _.forEach(bahmniObservations, function (observation) {
-                    var forms = [];
-                    _.forEach(observation.value, function (form) {
-                        if (form.concept.conceptClass) {
-                            forms.push(form);
-                            return;
-                        }
-                        var observationForm = self.getFormByFormName(allForms, form.concept.shortName, self.getFormVersion(form.groupMembers));
-                        if (!observationForm) {
-                            return;
-                        }
-                        formService.getFormDetail(observationForm.uuid, { v: "custom:(resources:(value))"}).then(function (response) {
-                            var formDetailsAsString = _.get(response, 'data.resources[0].value');
-                            if (formDetailsAsString) {
-                                var formDetails = JSON.parse(formDetailsAsString);
-                                forms.push(self.createSectionForSingleForm(form, formDetails));
-                            }
-                            observation.value = forms;
-                        });
-                    });
-                });
-            });
-        };
-    }
-    ]);
-
-'use strict';
-
-angular.module('bahmni.common.displaycontrol.observation')
     .directive('bahmniObservation', ['observationsService', 'appService', '$q', 'spinner', '$rootScope', 'formHierarchyService', '$translate',
         function (observationsService, appService, $q, spinner, $rootScope, formHierarchyService, $translate) {
             var controller = function ($scope) {
@@ -9219,6 +8563,203 @@ Bahmni.Common.DisplayControl.Observation.GroupingFunctions = function () {
 };
 
 'use strict';
+
+angular.module('bahmni.common.displaycontrol.observation')
+    .service('formHierarchyService', ['formService', function (formService) {
+        var self = this;
+
+        self.build = function (observations) {
+            var obs = self.preProcessMultipleSelectObsToObs(observations);
+            obs = self.createDummyObsGroupForObservationsForForm(obs);
+            self.createDummyObsGroupForSectionsForForm(obs);
+        };
+
+        self.preProcessMultipleSelectObsToObs = function (observations) {
+            _.forEach(observations, function (obs) {
+                _.forEach(obs.value, function (value, index) {
+                    if (value.type == "multiSelect") {
+                        obs.value.push(value.groupMembers[0]);
+                        obs.value.splice(index, 1);
+                    }
+                });
+            });
+            return observations;
+        };
+
+        self.createDummyObsGroupForObservationsForForm = function (observations) {
+            _.forEach(observations, function (obs) {
+                var newValues = [];
+                _.forEach(obs.value, function (value) {
+                    if (!value.formFieldPath) {
+                        newValues.push(value);
+                        return;
+                    }
+
+                    var dummyObsGroup = {
+                        "groupMembers": [],
+                        "concept": {
+                            "shortName": "",
+                            "conceptClass": null
+                        },
+                        "encounterUuid": ""
+                    };
+
+                    dummyObsGroup.concept.shortName = value.formFieldPath.split('.')[0];
+                    dummyObsGroup.encounterUuid = value.encounterUuid;
+                    var previousDummyObsGroupFound;
+                    _.forEach(newValues, function (newValue) {
+                        if (dummyObsGroup.concept.shortName == newValue.concept.shortName) {
+                            newValue.groupMembers.push(value);
+                            previousDummyObsGroupFound = true;
+                        }
+                    });
+
+                    if (previousDummyObsGroupFound) {
+                        return;
+                    }
+
+                    dummyObsGroup.groupMembers.push(value);
+                    newValues.push(dummyObsGroup);
+                });
+
+                obs.value = newValues;
+            });
+
+            return observations;
+        };
+
+        self.getFormVersion = function (members) {
+            var formVersion;
+            _.forEach(members, function (member) {
+                if (member.formFieldPath) {
+                    formVersion = member.formFieldPath.split('.')[1].split('/')[0];
+                    return false;
+                }
+            });
+            return formVersion;
+        };
+
+        self.getMemberFromFormByFormFieldPath = function (members, id) {
+            return _.filter(members, function (member) {
+                return member.formFieldPath.split('.')[1].split('/')[1].split('-')[0] == id;
+            });
+        };
+
+        self.getFormByFormName = function (formList, formName, formVersion) {
+            return _.find(formList, function (form) {
+                return form.name == formName && form.version == formVersion;
+            });
+        };
+
+        self.parseSection = function (members, controls, value) {
+            var sectionIsEmpty = true;
+            _.forEach(controls, function (control) {
+                var dummyObsGroup = {
+                    "groupMembers": [],
+                    "concept": {
+                        "shortName": "",
+                        "conceptClass": null
+                    }
+                };
+                if (control.type == "section") {
+                    dummyObsGroup.concept.shortName = control.label.value;
+                    value.groupMembers.push(dummyObsGroup);
+                    if (!self.parseSection(members, control.controls, dummyObsGroup)) {
+                        value.groupMembers.pop();
+                    } else {
+                        sectionIsEmpty = false;
+                    }
+                } else {
+                    var member = self.getMemberFromFormByFormFieldPath(members, control.id);
+                    if (member.length != 0) {
+                        if (member[0].formFieldPath.split('-')[1] != 0) {
+                            _.reverse(member);
+                        }
+                        _.map(member, function (m) {
+                            value.groupMembers.push(m);
+                        });
+                        sectionIsEmpty = false;
+                    }
+                }
+            });
+            if (sectionIsEmpty) {
+                return null;
+            }
+            return value;
+        };
+
+        self.createSectionForSingleForm = function (obsFromSameForm, formDetails) {
+            var members = obsFromSameForm.groupMembers.slice();
+            obsFromSameForm.groupMembers.splice(0, obsFromSameForm.groupMembers.length);
+
+            return self.parseSection(members, formDetails.controls, obsFromSameForm);
+        };
+
+        self.createDummyObsGroupForSectionsForForm = function (bahmniObservations) {
+            if (_.isEmpty(bahmniObservations)) {
+                return;
+            }
+
+            formService.getAllForms().then(function (response) {
+                var allForms = response.data;
+                _.forEach(bahmniObservations, function (observation) {
+                    var forms = [];
+                    _.forEach(observation.value, function (form) {
+                        if (form.concept.conceptClass) {
+                            forms.push(form);
+                            return;
+                        }
+                        var observationForm = self.getFormByFormName(allForms, form.concept.shortName, self.getFormVersion(form.groupMembers));
+                        if (!observationForm) {
+                            return;
+                        }
+                        formService.getFormDetail(observationForm.uuid, { v: "custom:(resources:(value))"}).then(function (response) {
+                            var formDetailsAsString = _.get(response, 'data.resources[0].value');
+                            if (formDetailsAsString) {
+                                var formDetails = JSON.parse(formDetailsAsString);
+                                forms.push(self.createSectionForSingleForm(form, formDetails));
+                            }
+                            observation.value = forms;
+                        });
+                    });
+                });
+            });
+        };
+    }
+    ]);
+
+'use strict';
+
+angular.module('bahmni.common.conceptSet')
+    .factory('formService', ['$http', function ($http) {
+        var getFormList = function (encounterUuid) {
+            return $http.get(Bahmni.Common.Constants.latestPublishedForms, {params: {encounterUuid: encounterUuid}});
+        };
+
+        var getAllForms = function () {
+            return $http.get(Bahmni.Common.Constants.allFormsUrl, {params: {v: "custom:(version,name,uuid)"}});
+        };
+
+        var getFormDetail = function (formUuid, params) {
+            return $http.get(Bahmni.Common.Constants.formUrl + '/' + formUuid, {params: params});
+        };
+
+        var getFormTranslations = function (url, form) {
+            if (url && url !== Bahmni.Common.Constants.formTranslationsUrl) {
+                return $http.get(url);
+            }
+            return $http.get(Bahmni.Common.Constants.formTranslationsUrl, { params: form});
+        };
+
+        return {
+            getFormList: getFormList,
+            getAllForms: getAllForms,
+            getFormDetail: getFormDetail,
+            getFormTranslations: getFormTranslations
+        };
+    }]);
+
+'use strict';
 var Bahmni = Bahmni || {};
 Bahmni.Common = Bahmni.Common || {};
 Bahmni.Common.DisplayControl = Bahmni.Common.DisplayControl || {};
@@ -9296,6 +8837,42 @@ angular.module('bahmni.common.displaycontrol.disposition')
                 }
             };
         }]);
+
+'use strict';
+
+angular.module('bahmni.common.displaycontrol.conditionsList', []);
+angular.module('bahmni.common.displaycontrol.conditionsList')
+    .directive('conditionsList', ['conditionsService', 'ngDialog', function (conditionsService, ngDialog) {
+        var controller = function ($scope) {
+            $scope.statuses = ['ACTIVE', 'HISTORY_OF'];
+
+            $scope.openSummaryDialog = function () {
+                ngDialog.open({
+                    template: '../common/displaycontrols/conditionsList/views/conditionsList.html',
+                    className: 'ngdialog-theme-default ng-dialog-all-details-page',
+                    data: {conditions: $scope.conditions},
+                    controller: function ($scope) {
+                        $scope.hideTitle = true;
+                        $scope.statuses = ['ACTIVE', 'HISTORY_OF', 'INACTIVE'];
+                        $scope.conditions = $scope.ngDialogData.conditions;
+                    }
+                });
+            };
+
+            return conditionsService.getConditions($scope.patient.uuid).then(function (conditions) {
+                $scope.conditions = conditions;
+            });
+        };
+        return {
+            restrict: 'E',
+            controller: controller,
+            templateUrl: "../common/displaycontrols/conditionsList/views/conditionsList.html",
+            scope: {
+                params: "=",
+                patient: "="
+            }
+        };
+    }]);
 
 'use strict';
 var Bahmni = Bahmni || {};
@@ -9817,2052 +9394,973 @@ angular.module('bahmni.common.i18n')
 
 'use strict';
 
-angular.module('bahmni.common.services', []);
-
-'use strict';
-
-angular.module('ot', ['bahmni.common.patient', 'bahmni.common.patientSearch', 'bahmni.common.uiHelper', 'bahmni.common.conceptSet', 'authentication', 'bahmni.common.appFramework',
-    'httpErrorInterceptor', 'bahmni.common.domain', 'bahmni.ot', 'bahmni.common.config', 'ui.router', 'bahmni.common.util', 'bahmni.common.routeErrorHandler', 'bahmni.common.i18n',
-    'bahmni.common.displaycontrol.dashboard', 'bahmni.common.displaycontrol.observation', 'bahmni.common.displaycontrol.disposition', 'bahmni.common.displaycontrol.admissiondetails', 'bahmni.common.displaycontrol.custom',
-    'bahmni.common.obs', 'bahmni.common.displaycontrol.patientprofile', 'bahmni.common.displaycontrol.diagnosis', 'RecursionHelper', 'ngSanitize', 'bahmni.common.uiHelper', 'bahmni.common.uicontrols.programmanagment', 'bahmni.common.displaycontrol.navigationlinks', 'pascalprecht.translate',
-    'bahmni.common.displaycontrol.dashboard', 'ngCookies', 'ngDialog', 'angularFileUpload', 'monospaced.elastic', 'dndLists', 'bahmni.common.services']);
-angular.module('ot').config(['$stateProvider', '$httpProvider', '$urlRouterProvider', '$bahmniTranslateProvider', '$compileProvider',
-    function ($stateProvider, $httpProvider, $urlRouterProvider, $bahmniTranslateProvider, $compileProvider) {
-        $urlRouterProvider.otherwise('/home');
-
-        var homeBackLink = {type: "link", name: "Home", value: "../home/", accessKey: "h", icon: "fa-home"};
-        var otSchedulingLink = {type: "state", name: "OT_SCHEDULING_KEY", value: "otScheduling", accessKey: "b"};
-        var queuesLink = {type: "state", name: "OT_SURGICAL_QUEUES_KEY", value: "home", accessKey: "b"};
-        var navigationLinks = [queuesLink, otSchedulingLink];
-
-        $compileProvider.debugInfoEnabled(false);
-
-
-        $stateProvider
-            .state('home', {
-                url: '/home',
-                data: {
-                    homeBackLink: homeBackLink,
-                    navigationLinks: navigationLinks
-                },
-                views: {
-                    'additional-header': {
-                        templateUrl: 'views/header.html'
-                    },
-                    'content': {
-                        templateUrl: '../common/patient-search/views/patientsList.html',
-                        controller: 'PatientsListController'
-                    }
-                },
-                resolve: {
-                    initialization: 'initialization'
+angular.module('bahmni.common.uiHelper')
+    .directive('singleClick', function () {
+        var ignoreClick = false;
+        var link = function (scope, element) {
+            var clickHandler = function () {
+                if (ignoreClick) {
+                    return;
                 }
-            })
-            .state('otScheduling', {
-                url: '/otScheduling',
-                data: {
-                    homeBackLink: homeBackLink,
-                    navigationLinks: navigationLinks
-                },
-                params: {
-                    viewDate: null
-                },
-                views: {
-                    'content': {
-                        templateUrl: 'views/home.html',
-                        controller: 'calendarViewController'
-                    },
-                    'additional-header': {
-                        templateUrl: 'views/header.html'
-                    }
-                },
-                resolve: {
-                    initialization: "initialization"
-                }
-            })
-            .state('newSurgicalAppointment', {
-                url: '/surgicalblock/new',
-                data: {
-                    homeBackLink: homeBackLink,
-                    navigationLinks: navigationLinks
-                },
-                params: {
-                    dashboardCachebuster: null,
-                    context: null
-                },
-                views: {
-                    'content': {
-                        templateUrl: 'views/surgicalBlock.html',
-                        controller: 'surgicalBlockController'
-                    },
-                    'additional-header': {
-                        templateUrl: 'views/header.html'
-                    }
-                },
-                resolve: {
-                    initialization: "initialization"
-                }
-            })
-            .state('editSurgicalAppointment', {
-                url: '/surgicalblock/:surgicalBlockUuid/edit',
-                data: {
-                    homeBackLink: homeBackLink,
-                    navigationLinks: navigationLinks
-                },
-                params: {
-                    dashboardCachebuster: null,
-                    surgicalAppointmentId: null
-                },
-                views: {
-                    'content': {
-                        templateUrl: 'views/surgicalBlock.html',
-                        controller: 'surgicalBlockController'
-                    },
-                    'additional-header': {
-                        templateUrl: 'views/header.html'
-                    }
-                },
-                resolve: {
-                    initialization: "initialization"
-                }
+                ignoreClick = true;
+                scope.singleClick().finally(function () {
+                    ignoreClick = false;
+                });
+            };
+
+            element.on('click', clickHandler);
+
+            scope.$on("$destroy", function () {
+                element.off('click', clickHandler);
             });
-
-        $bahmniTranslateProvider.init({app: 'ot', shouldMerge: true});
-    }]);
-
-'use strict';
-
-var Bahmni = Bahmni || {};
-Bahmni.OT = Bahmni.OT || {};
-
-angular.module('bahmni.ot', ['bahmni.common.conceptSet', 'bahmni.common.logging']);
-
+        };
+        return {
+            scope: {
+                singleClick: '&'
+            },
+            restrict: 'A',
+            link: link
+        };
+    });
 
 'use strict';
 
 var Bahmni = Bahmni || {};
-Bahmni.OT = Bahmni.OT || {};
+Bahmni.ADT = Bahmni.ADT || {};
 
-Bahmni.OT.Constants = (function () {
-    var RESTWS_V1 = "/openmrs/ws/rest/v1";
+angular.module('bahmni.adt', ['bahmni.common.conceptSet', 'bahmni.common.logging']);
+
+
+'use strict';
+
+var Bahmni = Bahmni || {};
+Bahmni.ADT = Bahmni.ADT || {};
+
+Bahmni.ADT.Constants = (function () {
     return {
-        cancelled: "CANCELLED",
-        postponed: "POSTPONED",
-        completed: "COMPLETED",
-        scheduled: "SCHEDULED",
-        addSurgicalBlockUrl: RESTWS_V1 + "/surgicalBlock",
-        updateSurgicalAppointmentUrl: RESTWS_V1 + "/surgicalAppointment",
-        surgicalAppointmentAttributeTypeUrl: RESTWS_V1 + "/surgicalAppointmentAttributeType",
-        defaultCalendarEndTime: '23:59',
-        defaultCalendarStartTime: '00:00'
+        patientsListUrl: "/patient/search",
+        ipdDashboard: "#/patient/{{patientUuid}}/visit/{{visitUuid}}/",
+        admissionLocationUrl: "/openmrs/ws/rest/v1/admissionLocation/"
     };
 })();
 
 
 'use strict';
 
-angular.module('bahmni.ot').factory('initialization', ['$rootScope', '$q', 'surgicalAppointmentHelper', 'appService', 'surgicalAppointmentService', 'authenticator', 'spinner',
-    function ($rootScope, $q, surgicalAppointmentHelper, appService, surgicalAppointmentService, authenticator, spinner) {
+angular.module('adt', ['bahmni.common.patient', 'bahmni.common.patientSearch', 'bahmni.common.uiHelper', 'bahmni.common.conceptSet', 'authentication', 'bahmni.common.appFramework',
+    'httpErrorInterceptor', 'bahmni.adt', 'bahmni.common.domain', 'bahmni.common.config', 'ui.router', 'bahmni.common.util', 'bahmni.common.routeErrorHandler', 'bahmni.common.i18n',
+    'bahmni.common.displaycontrol.dashboard', 'bahmni.common.displaycontrol.conditionsList', 'bahmni.common.displaycontrol.observation', 'bahmni.common.displaycontrol.disposition', 'bahmni.common.displaycontrol.admissiondetails', 'bahmni.common.displaycontrol.custom',
+    'bahmni.common.obs', 'bahmni.common.displaycontrol.patientprofile', 'bahmni.common.displaycontrol.diagnosis', 'RecursionHelper', 'ngSanitize', 'bahmni.common.uiHelper', 'bahmni.common.displaycontrol.navigationlinks', 'pascalprecht.translate',
+    'bahmni.common.displaycontrol.dashboard', 'ngCookies', 'ngDialog', 'angularFileUpload']);
+angular.module('adt').config(['$stateProvider', '$httpProvider', '$urlRouterProvider', '$bahmniTranslateProvider', '$compileProvider',
+    function ($stateProvider, $httpProvider, $urlRouterProvider, $bahmniTranslateProvider, $compileProvider) {
+        $urlRouterProvider.otherwise('/home');
+        var homeBackLink = {label: "", url: "../home/", accessKey: "h", icon: "fa-home", id: "homeBackLink"};
+        var adtHomeBackLink = {label: "", url: "#/home", accessKey: "p", icon: "fa-users", id: "adtHomeBackLink" };
+
+        $compileProvider.debugInfoEnabled(false);
+
+
+        $stateProvider
+        .state('home', {
+            url: '/home',
+            data: {
+                backLinks: [homeBackLink]
+            },
+            views: {
+                'content': {
+                    templateUrl: 'views/home.html',
+                    controller: function ($scope, appService) {
+                        $scope.isBedManagementEnabled = appService.getAppDescriptor().getConfig("isBedManagementEnabled").value;
+                    }
+                },
+                'wards@home': {
+                    templateUrl: 'views/wards.html',
+                    controller: 'WardsController'
+                },
+                'additional-header': {
+                    templateUrl: 'views/headerAdt.html'
+                }
+            },
+            resolve: {
+                initialization: 'initialization'
+            }
+        })
+        .state('patient', {
+            url: '/patient/:patientUuid',
+            data: {
+                backLinks: [homeBackLink, adtHomeBackLink]
+            },
+            abstract: true,
+            views: {
+                'header': {
+                    templateUrl: 'views/headerAdt.html',
+                    controller: function ($scope) {
+                        $scope.showClinicalDashboardLink = true;
+                    }
+                },
+                'content': {
+                    template: '<ui-view/>'
+                },
+                'additional-header': {
+                    templateUrl: '../common/patient/header/views/header.html'
+                }
+            },
+
+            resolve: {
+                patientResolution: function ($stateParams, patientInitialization) {
+                    return patientInitialization($stateParams.patientUuid);
+                }
+            }
+        })
+        .state('patient.adt', {
+            url: '/visit/:visitUuid',
+            abstract: true,
+            template: '<ui-view/>'
+        })
+        .state('patient.adt.action', {
+            url: '/:action',
+            templateUrl: 'views/dashboard.html',
+            controller: 'AdtController'
+        })
+        .state('patient.adt.bedForExistingEncounter', {
+            url: '/encounter/:encounterUuid/bed',
+            templateUrl: 'views/bedManagement.html',
+            controller: 'BedManagementController'
+        })
+        .state('patient.adt.bedForNewEncounter', {
+            url: '/bed',
+            templateUrl: 'views/bedManagement.html',
+            controller: 'BedManagementController'
+        });
+
+        $bahmniTranslateProvider.init({app: 'adt', shouldMerge: true});
+    }]).run(['$window', function ($window) {
+        moment.locale($window.localStorage["NG_TRANSLATE_LANG_KEY"] || "en");
+    }]);
+
+'use strict';
+
+angular.module('bahmni.adt').factory('initialization', ['$rootScope', '$q', 'appService', 'configurations', 'authenticator', 'spinner',
+    function ($rootScope, $q, appService, configurations, authenticator, spinner) {
+        var getConfigs = function () {
+            var config = $q.defer();
+            var configNames = ['encounterConfig', 'patientConfig', 'genderMap', 'relationshipTypeMap'];
+            configurations.load(configNames).then(function () {
+                $rootScope.encounterConfig = angular.extend(new EncounterConfig(), configurations.encounterConfig());
+                $rootScope.patientConfig = configurations.patientConfig();
+                $rootScope.genderMap = configurations.genderMap();
+                $rootScope.relationshipTypeMap = configurations.relationshipTypeMap();
+                $rootScope.diagnosisStatus = (appService.getAppDescriptor().getConfig("diagnosisStatus") && appService.getAppDescriptor().getConfig("diagnosisStatus").value || "RULED OUT");
+                config.resolve();
+            });
+            return config.promise;
+        };
+
         var initApp = function () {
-            return appService.initApp('ot', {'app': true, 'extension': true}).then(function (data) {
-                var providerNames = data.getConfigValue("primarySurgeonsForOT");
-                return $q.all([surgicalAppointmentService.getSurgeons(), surgicalAppointmentService.getSurgicalAppointmentAttributeTypes()]).then(function (response) {
-                    $rootScope.surgeons = surgicalAppointmentHelper.filterProvidersByName(providerNames, response[0].data.results);
-                    $rootScope.attributeTypes = response[1].data.results;
-                    return response;
-                });
+            return appService.initApp('adt', {'app': true, 'extension': true}).then(function (data) {
+                var config = data.getConfig("onAdmissionForwardTo", false);
+                data.baseConfigs.dashboard.value.sections = _.sortBy(data.baseConfigs.dashboard.value.sections, function (section) {
+                    return section.displayOrder;
+                }
+                );
+                data.baseConfigs.isBedManagementEnabled = {name: 'isBedManagementEnabled', value: _.includes(config[0].value, 'bed')};
+                if (config[1]) {
+                    data.customConfigs.isBedManagementEnabled = {name: 'isBedManagementEnabled', value: _.includes(config[1].value, 'bed')};
+                }
             });
         };
-        return spinner.forPromise(authenticator.authenticateUser().then(initApp));
+
+        return spinner.forPromise(authenticator.authenticateUser().then(initApp).then(getConfigs));
     }
 ]);
 
 'use strict';
 
-angular.module('bahmni.ot')
-    .service('surgicalAppointmentHelper', [function () {
-        this.filterProvidersByName = function (providerNames, providers) {
-            var validProviderNames = _.filter(providerNames, function (providerName) {
-                return _.find(providers, function (provider) {
-                    return providerName === provider.person.display;
+angular.module('bahmni.adt').factory('patientInitialization', ['$rootScope', '$q', 'patientService', 'initialization', 'bedService', 'spinner', '$translate',
+    function ($rootScope, $q, patientService, initialization, bedService, spinner, $translate) {
+        return function (patientUuid) {
+            var getPatient = function () {
+                var patientMapper = new Bahmni.PatientMapper($rootScope.patientConfig, $rootScope, $translate);
+                var patientPromise = $q.defer();
+                patientService.getPatient(patientUuid).then(function (response) {
+                    $rootScope.patient = patientMapper.map(response.data);
+                    patientPromise.resolve();
                 });
-            });
-            return _.map(validProviderNames, function (providerName) {
-                return _.find(providers, function (provider) {
-                    return providerName === provider.person.display;
-                });
-            });
-        };
+                return patientPromise.promise;
+            };
 
-        this.getPatientDisplayLabel = function (display) {
-            return display.split(' - ')[1] + " ( " + display.split(' - ')[0] + " )";
-        };
+            var bedDetailsForPatient = function () {
+                return bedService.setBedDetailsForPatientOnRootScope(patientUuid);
+            };
 
-        this.getAppointmentAttributes = function (surgicalAppointment) {
-            return _.reduce(surgicalAppointment.surgicalAppointmentAttributes, function (attributes, attribute) {
-                attributes[attribute.surgicalAppointmentAttributeType.name] = attribute.value;
-                return attributes;
-            }, {});
+            return spinner.forPromise(initialization.then(getPatient).then(bedDetailsForPatient));
         };
+    }
+]);
 
-        this.getEstimatedDurationForAppointment = function (surgicalAppointment) {
-            var attributes = this.getAppointmentAttributes(surgicalAppointment);
-            return this.getAppointmentDuration(attributes.estTimeHours, attributes.estTimeMinutes, attributes.cleaningTime);
-        };
-
-        this.getAppointmentDuration = function (estTimeHours, estTimeMinutes, cleaningTime) {
-            return estTimeHours * 60 + (parseInt(estTimeMinutes) || 0) + (parseInt(cleaningTime) || 0);
-        };
-
-        this.filterSurgicalAppointmentsByStatus = function (surgicalAppointments, appointmentStatusList) {
-            if (_.isEmpty(appointmentStatusList)) {
-                return surgicalAppointments;
-            }
-            return _.filter(surgicalAppointments, function (appointment) {
-                return appointmentStatusList.indexOf(appointment.status) >= 0;
-            });
-        };
-
-        this.filterSurgicalAppointmentsByPatient = function (surgicalAppointments, patient) {
-            if (!patient) {
-                return surgicalAppointments;
-            }
-            return _.filter(surgicalAppointments, function (appointment) {
-                return appointment.patient.uuid === patient.uuid;
-            });
-        };
-    }]);
 
 'use strict';
+var Bahmni = Bahmni || {};
+Bahmni.ADT = Bahmni.ADT || {};
 
-angular.module('bahmni.ot')
-    .service('surgicalBlockHelper', ['surgicalAppointmentHelper', function (surgicalAppointmentHelper) {
-        this.getAvailableBlockDuration = function (surgicalBlock) {
-            var blockDuration = Bahmni.Common.Util.DateUtil.diffInMinutes(surgicalBlock.startDatetime, surgicalBlock.endDatetime);
-            var appointmentsDuration = _.sumBy(_.reject(surgicalBlock.surgicalAppointments, function (appointment) {
-                return (appointment.status == "POSTPONED" || appointment.status == "CANCELLED");
-            }), function (surgicalAppointment) {
-                return surgicalAppointmentHelper.getAppointmentDuration(surgicalAppointment.surgicalAppointmentAttributes.estTimeHours.value, surgicalAppointment.surgicalAppointmentAttributes.estTimeMinutes.value, surgicalAppointment.surgicalAppointmentAttributes.cleaningTime.value);
-            });
-            return blockDuration - appointmentsDuration;
-        };
-    }]);
+Bahmni.ADT.DispositionDisplayUtil = {
+    getEncounterToDisplay: function (encounterConfig, visit) {
+        var rankActions = {};
+        rankActions[encounterConfig.getAdmissionEncounterTypeUuid()] = 1;
+        rankActions[encounterConfig.getTransferEncounterTypeUuid()] = 2;
+        rankActions[encounterConfig.getDischargeEncounterTypeUuid()] = 3;
+
+        if (visit.isDischarged()) {
+            return encounterConfig.getDischargeEncounterTypeUuid();
+        } else if (visit.isAdmitted() && !visit.isDischarged()) {
+            return encounterConfig.getTransferEncounterTypeUuid();
+        } else {
+            return encounterConfig.getAdmissionEncounterTypeUuid();
+        }
+    }
+};
 
 "use strict";
 
-angular.module('bahmni.ot')
-    .directive('backLinksCacheBuster', ['$state', '$window', function ($state, $window) {
-        var controller = function ($scope, $state, $window) {
-            $scope.navigationLinks = $state.current.data.navigationLinks;
-            $scope.homeBackLink = $state.current.data.homeBackLink;
-            $scope.isCurrentState = function (link) {
-                if ($state.current.name === link.value) {
-                    return true;
+angular.module('bahmni.adt')
+    .controller('AdtController', ['$scope', '$q', '$rootScope', 'spinner', 'dispositionService',
+        'encounterService', 'bedService', 'appService', 'visitService', '$location', '$window', 'sessionService',
+        'messagingService', '$anchorScroll', '$stateParams', 'ngDialog', '$filter', 'auditLogService',
+        function ($scope, $q, $rootScope, spinner, dispositionService, encounterService, bedService,
+                  appService, visitService, $location, $window, sessionService, messagingService, $anchorScroll,
+                  $stateParams, ngDialog, $filter, auditLogService) {
+            var actionConfigs = {};
+            var encounterConfig = $rootScope.encounterConfig;
+            var locationUuid = sessionService.getLoginLocationUuid();
+            var visitTypes = encounterConfig.getVisitTypes();
+            $scope.defaultVisitTypeName = appService.getAppDescriptor().getConfigValue('defaultVisitType');
+            $scope.adtObservations = [];
+            $scope.dashboardConfig = appService.getAppDescriptor().getConfigValue('dashboard');
+            $scope.getAdtConceptConfig = $scope.dashboardConfig.conceptName;
+
+            var getVisitTypeUuid = function (visitTypeName) {
+                var visitType = _.find(visitTypes, {name: visitTypeName});
+                return visitType && visitType.uuid || null;
+            };
+
+            var defaultVisitTypeUuid = getVisitTypeUuid($scope.defaultVisitTypeName);
+
+            var getCurrentVisitTypeUuid = function () {
+                if ($scope.visitSummary && $scope.visitSummary.dateCompleted === null) {
+                    return getVisitTypeUuid($scope.visitSummary.visitType);
                 }
-            };
-            $scope.linkAction = function (type, value, params) {
-                if (type === 'state') {
-                    onClickState(value, params);
-                } else {
-                    $window.location.href = value;
-                }
+                return defaultVisitTypeUuid;
             };
 
-            var onClickState = function (value, params) {
-                if (!params) {
-                    params = {};
-                }
-                params['dashboardCachebuster'] = Math.random();
-                $state.go(value, params);
-            };
-        };
-
-        return {
-            restrict: 'E',
-            controller: controller,
-            templateUrl: "views/backLinks.html",
-            scope: {
-                type: "=",
-                name: "=",
-                value: "=",
-                params: "=",
-                icon: "=",
-                accessKey: "="
-            }
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .controller('surgicalBlockController', ['$scope', '$q', '$state', '$stateParams', 'spinner', 'surgicalAppointmentService', 'locationService', 'appService', 'messagingService', 'surgicalAppointmentHelper', 'surgicalBlockHelper', 'ngDialog',
-        function ($scope, $q, $state, $stateParams, spinner, surgicalAppointmentService, locationService, appService, messagingService, surgicalAppointmentHelper, surgicalBlockHelper, ngDialog) {
-            var init = function () {
-                $scope.surgicalForm = {
-                    surgicalAppointments: []
-                };
-                var providerNamesFromConfig = appService.getAppDescriptor().getConfigValue("primarySurgeonsForOT");
-                return $q.all([surgicalAppointmentService.getSurgeons(), locationService.getAllByTag("Operation Theater"), surgicalAppointmentService.getSurgicalAppointmentAttributeTypes()]).then(function (response) {
-                    $scope.surgeons = surgicalAppointmentHelper.filterProvidersByName(providerNamesFromConfig, response[0].data.results);
-                    $scope.locations = response[1].data.results;
-                    $scope.attributeTypes = response[2].data.results;
-                    if ($stateParams.surgicalBlockUuid) {
-                        return surgicalAppointmentService.getSurgicalBlockFor($stateParams.surgicalBlockUuid).then(function (response) {
-                            $scope.surgicalForm = new Bahmni.OT.SurgicalBlockMapper().map(response.data, $scope.attributeTypes, $scope.surgeons);
-                            $scope.surgicalForm.surgicalAppointments = surgicalAppointmentHelper.filterSurgicalAppointmentsByStatus(
-                                $scope.surgicalForm.surgicalAppointments, [Bahmni.OT.Constants.scheduled, Bahmni.OT.Constants.completed]);
-                            var selectedSurgicalAppointment = _.find($scope.surgicalForm.surgicalAppointments, function (appointment) {
-                                return appointment.id === $stateParams.surgicalAppointmentId;
-                            });
-                            if (selectedSurgicalAppointment) {
-                                $scope.editAppointment(selectedSurgicalAppointment);
-                            }
-                            getAvailableBlockDurationInHoursAndMinutesFormat();
-                            return response;
-                        });
-                    }
-                    return response;
-                });
-            };
-
-            var getAppointmentDuration = function (surgicalAppointment) {
-                return surgicalAppointmentHelper.getAppointmentDuration(surgicalAppointment.surgicalAppointmentAttributes.estTimeHours.value, surgicalAppointment.surgicalAppointmentAttributes.estTimeMinutes.value, surgicalAppointment.surgicalAppointmentAttributes.cleaningTime.value);
-            };
-
-            var getAvailableBlockDuration = function () {
-                return surgicalBlockHelper.getAvailableBlockDuration($scope.surgicalForm);
-            };
-
-            $scope.getPatientName = function (surgicalAppointment) {
-                return surgicalAppointment.patient.value || surgicalAppointmentHelper.getPatientDisplayLabel(surgicalAppointment.patient.display);
-            };
-
-            $scope.editAppointment = function (surgicalAppointment) {
-                _.forEach($scope.surgicalForm.surgicalAppointments, function (surgicalAppointment) {
-                    delete surgicalAppointment.isBeingEdited;
-                });
-                var clone = _.cloneDeep(surgicalAppointment);
-                surgicalAppointment.isBeingEdited = true;
-                $scope.addNewSurgicalAppointment(clone);
-            };
-
-            $scope.isFormValid = function () {
-                return $scope.createSurgicalBlockForm.$valid && $scope.isStartDatetimeBeforeEndDatetime($scope.surgicalForm.startDatetime, $scope.surgicalForm.endDatetime);
-            };
-
-            $scope.isStartDatetimeBeforeEndDatetime = function (startDate, endDate) {
-                if (startDate && endDate) {
-                    return startDate < endDate;
-                }
-                return true;
-            };
-
-            $scope.save = function (surgicalForm) {
-                if (!$scope.isFormValid()) {
-                    messagingService.showMessage('error', "{{'OT_ENTER_MANDATORY_FIELDS' | translate}}");
-                    return;
-                }
-                if (getAvailableBlockDuration() < 0) {
-                    messagingService.showMessage('error', "{{'OT_SURGICAL_APPOINTMENT_EXCEEDS_BLOCK_DURATION' | translate}}");
-                    return;
-                }
-                $scope.updateSortWeight(surgicalForm);
-                var surgicalBlock = new Bahmni.OT.SurgicalBlockMapper().mapSurgicalBlockUIToDomain(surgicalForm);
-                var saveOrupdateSurgicalBlock = _.isEmpty(surgicalBlock.uuid) ? surgicalAppointmentService.saveSurgicalBlock : surgicalAppointmentService.updateSurgicalBlock;
-                spinner.forPromise(saveOrupdateSurgicalBlock(surgicalBlock)).then(function (response) {
-                    $scope.surgicalForm = new Bahmni.OT.SurgicalBlockMapper().map(response.data, $scope.attributeTypes, $scope.surgeons);
-                    $scope.surgicalForm.surgicalAppointments = surgicalAppointmentHelper.filterSurgicalAppointmentsByStatus(
-                        $scope.surgicalForm.surgicalAppointments, [Bahmni.OT.Constants.scheduled, Bahmni.OT.Constants.completed]);
-                    messagingService.showMessage('info', "{{'OT_SAVE_SUCCESS_MESSAGE_KEY' | translate}}");
-                    $state.go('editSurgicalAppointment', {surgicalBlockUuid: response.data.uuid});
-                });
-            };
-
-            var addOrUpdateTheSurgicalAppointment = function (surgicalAppointment) {
-                if (surgicalAppointment.sortWeight >= 0) {
-                    var existingAppointment = _.find($scope.surgicalForm.surgicalAppointments, function (appointment) {
-                        return appointment.isBeingEdited === true;
+            var getActionCode = function (concept) {
+                var mappingCode = "";
+                if (concept.mappings) {
+                    concept.mappings.forEach(function (mapping) {
+                        var mappingSource = mapping.display.split(":")[0];
+                        if (mappingSource === Bahmni.Common.Constants.emrapiConceptMappingSource) {
+                            mappingCode = $.trim(mapping.display.split(":")[1]);
+                        }
                     });
-                    existingAppointment.notes = surgicalAppointment.notes;
-                    existingAppointment.patient = surgicalAppointment.patient;
-                    existingAppointment.surgicalAppointmentAttributes = surgicalAppointment.surgicalAppointmentAttributes;
-                    existingAppointment.isBeingEdited = false;
-                } else {
-                    surgicalAppointment.sortWeight = $scope.surgicalForm.surgicalAppointments.length;
-                    $scope.surgicalForm.surgicalAppointments.push(surgicalAppointment);
                 }
+                return mappingCode;
             };
 
-            var canBeFittedInTheSurgicalBlock = function (surgicalAppointment) {
-                if (surgicalAppointment.sortWeight >= 0) {
-                    var existingAppointment = _.find($scope.surgicalForm.surgicalAppointments, function (appointment) {
-                        return appointment.sortWeight === surgicalAppointment.sortWeight;
-                    });
-                    var increasedDeltaTime = getAppointmentDuration(surgicalAppointment) - getAppointmentDuration(existingAppointment);
-                    return getAvailableBlockDuration() >= increasedDeltaTime;
-                }
-                return getAvailableBlockDuration() >= getAppointmentDuration(surgicalAppointment);
-            };
-
-            var checkIfSurgicalAppointmentIsDirty = function (surgicalAppointment) {
-                if (!surgicalAppointment.id) {
-                    return;
-                }
-                var savedSurgicalAppointment = _.find($scope.surgicalForm.surgicalAppointments, function (appointment) {
-                    return appointment.id === surgicalAppointment.id;
-                });
-                delete savedSurgicalAppointment.$$hashKey;
-                delete savedSurgicalAppointment.isDirty;
-                surgicalAppointment.isBeingEdited = savedSurgicalAppointment.isBeingEdited;
-                _.isEqual(savedSurgicalAppointment, surgicalAppointment) ? savedSurgicalAppointment.isDirty = false : savedSurgicalAppointment.isDirty = true;
-            };
-
-            var getAvailableBlockDurationInHoursAndMinutesFormat = function () {
-                var availableBlockDuration = getAvailableBlockDuration();
-                $scope.availableBlockDuration = Math.floor(availableBlockDuration / 60) + " hr " + availableBlockDuration % 60 + " mins";
-            };
-
-            $scope.addSurgicalAppointment = function (surgicalAppointment) {
-                if (canBeFittedInTheSurgicalBlock(surgicalAppointment)) {
-                    checkIfSurgicalAppointmentIsDirty(surgicalAppointment);
-                    addOrUpdateTheSurgicalAppointment(surgicalAppointment);
-                    getAvailableBlockDurationInHoursAndMinutesFormat();
-                    ngDialog.close();
-                    surgicalAppointment.isBeingEdited = false;
-                    surgicalAppointment.isDirty = true;
-
-                    var appointmentIndex;
-                    _.find($scope.surgicalForm.surgicalAppointments, function (appointment, index) {
-                        appointmentIndex = index;
-                        return surgicalAppointment.sortWeight === appointment.sortWeight;
-                    });
-                    $scope.surgicalForm.surgicalAppointments[appointmentIndex] = surgicalAppointment;
-                }
-                else {
-                    messagingService.showMessage('error', "{{'OT_SURGICAL_APPOINTMENT_EXCEEDS_BLOCK_DURATION' | translate}}");
-                }
-            };
-
-            $scope.updateSortWeight = function (surgicalBlock) {
-                var index = 0;
-                _.map(surgicalBlock && surgicalBlock.surgicalAppointments, function (appointment) {
-                    if (appointment.status !== 'POSTPONED' && appointment.status !== 'CANCELLED') {
-                        appointment.sortWeight = index++;
-                    }
-                    return appointment;
-                });
-            };
-
-            $scope.gotoCalendarPage = function () {
-                var options = {};
-                options['dashboardCachebuster'] = Math.random();
-                $state.go("otScheduling", options);
-            };
-
-            $scope.cancelSurgicalBlock = function () {
-                ngDialog.open({
-                    template: "views/cancelSurgicalBlock.html",
-                    closeByDocument: false,
-                    controller: "cancelSurgicalBlockController",
-                    className: 'ngdialog-theme-default ng-dialog-adt-popUp',
-                    showClose: true,
-                    data: {
-                        surgicalBlock: new Bahmni.OT.SurgicalBlockMapper().mapSurgicalBlockUIToDomain($scope.surgicalForm),
-                        provider: $scope.surgicalForm.provider.person.display
-                    }
-                });
-            };
-
-            $scope.cancelAppointment = function (surgicalAppointment) {
-                surgicalAppointment.isBeingEdited = true;
-                var clonedAppointment = _.cloneDeep(surgicalAppointment);
-                ngDialog.open({
-                    template: "views/cancelAppointment.html",
-                    controller: "surgicalBlockViewCancelAppointmentController",
-                    closeByDocument: false,
-                    showClose: true,
-                    className: 'ngdialog-theme-default ng-dialog-adt-popUp',
-                    scope: $scope,
-                    data: {
-                        surgicalAppointment: clonedAppointment,
-                        surgicalForm: $scope.surgicalForm,
-                        updateAvailableBlockDurationFn: getAvailableBlockDurationInHoursAndMinutesFormat
-                    }
-                });
-            };
-
-            $scope.cancelDisabled = function () {
-                var surgicalBlockWithCompletedAppointments = function () {
-                    return _.find($scope.surgicalForm.surgicalAppointments, function (appointment) {
-                        return appointment.status === Bahmni.OT.Constants.completed;
-                    });
-                };
-                return !$scope.surgicalForm.id || surgicalBlockWithCompletedAppointments();
-            };
-
-            $scope.addNewSurgicalAppointment = function (surgicalAppointment) {
-                ngDialog.open({
-                    template: "views/surgicalAppointment.html",
-                    controller: "NewSurgicalAppointmentController",
-                    closeByDocument: false,
-                    className: 'ngdialog-theme-default surgical-appointment-dialog',
-                    showClose: true,
-                    scope: $scope,
-                    data: surgicalAppointment
-                });
-            };
-
-            $scope.changeInStartDateTime = function () {
-                if (_.isUndefined($scope.surgicalForm.endDatetime)) {
-                    var calendarConfig = appService.getAppDescriptor().getConfigValue("calendarView");
-                    var dayViewEnd = (calendarConfig.dayViewEnd || Bahmni.OT.Constants.defaultCalendarEndTime).split(':');
-                    $scope.surgicalForm.endDatetime = Bahmni.Common.Util.DateUtil.addMinutes(moment($scope.surgicalForm.startDatetime).startOf('day').toDate(), (dayViewEnd[0] * 60 + parseInt(dayViewEnd[1])));
-                }
-            };
-
-            spinner.forPromise(init());
-        }]);
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .controller('NewSurgicalAppointmentController', ['$scope', '$q', '$window', 'patientService', 'surgicalAppointmentService', 'messagingService', 'programService', 'appService', 'ngDialog', 'spinner', 'queryService', 'programHelper',
-        function ($scope, $q, $window, patientService, surgicalAppointmentService, messagingService, programService, appService, ngDialog, spinner, queryService, programHelper) {
-            var init = function () {
-                $scope.selectedPatient = $scope.ngDialogData && $scope.ngDialogData.patient;
-                $scope.patient = $scope.ngDialogData && $scope.ngDialogData.patient && ($scope.ngDialogData.patient.value || $scope.ngDialogData.patient.display);
-                $scope.otherSurgeons = _.cloneDeep($scope.surgeons);
-                return $q.all([surgicalAppointmentService.getSurgicalAppointmentAttributeTypes()]).then(function (response) {
-                    $scope.attributeTypes = response[0].data.results;
-                    var attributes = {};
-                    var mapAttributes = new Bahmni.OT.SurgicalBlockMapper().mapAttributes(attributes, $scope.attributeTypes);
-                    $scope.attributes = $scope.ngDialogData && $scope.ngDialogData.surgicalAppointmentAttributes || mapAttributes;
-                    if ($scope.isEditMode()) {
-                        programService.getEnrollmentInfoFor($scope.ngDialogData.patient.uuid, "custom:(uuid,dateEnrolled,dateCompleted,program:(uuid),patient:(uuid))").then(function (response) {
-                            var groupedPrograms = programHelper.groupPrograms(response);
-                            $scope.enrollmentInfo = groupedPrograms && groupedPrograms.activePrograms[0];
-                        });
-                    }
-                });
-            };
-
-            $scope.isEditMode = function () {
-                return $scope.patient && $scope.ngDialogData && $scope.ngDialogData.id;
-            };
-
-            $scope.search = function () {
-                return patientService.search($scope.patient).then(function (response) {
-                    return response.data.pageOfResults;
-                });
-            };
-
-            $scope.onSelectPatient = function (data) {
-                $scope.selectedPatient = data;
-                var sqlGlobalProperty = appService.getAppDescriptor().getConfigValue('procedureSQLGlobalProperty');
-                if (!sqlGlobalProperty) {
-                    return;
-                }
-                var params = {
-                    patientUuid: data.uuid,
-                    q: sqlGlobalProperty,
-                    v: "full"
-                };
-                spinner.forPromise(queryService.getResponseFromQuery(params).then(function (response) {
-                    if (response.data.length) {
-                        $scope.attributes.procedure.value = response.data[0]['all_procedures'];
-                        var estHrs = response.data[0]['esthrs'];
-                        var estMins = response.data[0]['estmins'];
-                        $scope.attributes.estTimeHours.value = estHrs ? Math.floor(parseInt(estHrs) + estMins / 60) : 0;
-                        $scope.attributes.estTimeMinutes.value = estMins ? parseInt(estMins) % 60 : 0;
-                    } else {
-                        $scope.attributes.procedure.value = "";
-                        $scope.attributes.estTimeHours.value = 0;
-                        $scope.attributes.estTimeMinutes.value = 0;
-                    }
-                }));
-            };
-
-            $scope.responseMap = function (data) {
-                return _.map(data, function (patientInfo) {
-                    patientInfo.label = patientInfo.givenName + " " + patientInfo.familyName + " " + "( " + patientInfo.identifier + " )";
-                    return patientInfo;
-                });
-            };
-
-            $scope.createAppointmentAndAdd = function () {
-                if ($scope.surgicalAppointmentForm.$valid) {
-                    var appointment = {
-                        id: $scope.ngDialogData && $scope.ngDialogData.id,
-                        patient: $scope.selectedPatient,
-                        sortWeight: $scope.ngDialogData && $scope.ngDialogData.sortWeight,
-                        actualStartDatetime: $scope.ngDialogData && $scope.ngDialogData.actualStartDatetime,
-                        actualEndDatetime: $scope.ngDialogData && $scope.ngDialogData.actualEndDatetime,
-                        status: $scope.ngDialogData && $scope.ngDialogData.status || Bahmni.OT.Constants.scheduled,
-                        notes: $scope.ngDialogData && $scope.ngDialogData.notes,
-                        uuid: $scope.ngDialogData && $scope.ngDialogData.uuid,
-                        voided: $scope.ngDialogData && $scope.ngDialogData.voided,
-                        surgicalAppointmentAttributes: $scope.attributes
+            var initializeActionConfig = function () {
+                var admitActions = appService.getAppDescriptor().getExtensions("org.bahmni.adt.admit.action", "config");
+                var transferActions = appService.getAppDescriptor().getExtensions("org.bahmni.adt.transfer.action", "config");
+                var dischargeActions = appService.getAppDescriptor().getExtensions("org.bahmni.adt.discharge.action", "config");
+                var undoDischargeActions = appService.getAppDescriptor().getExtensions("org.bahmni.adt.undo.discharge.action", "config");
+                if (encounterConfig) {
+                    var Constants = Bahmni.Common.Constants;
+                    actionConfigs[Constants.admissionCode] = {
+                        encounterTypeUuid: encounterConfig.getAdmissionEncounterTypeUuid(),
+                        allowedActions: admitActions
                     };
-                    $scope.addSurgicalAppointment(appointment);
+                    actionConfigs[Constants.dischargeCode] = {
+                        encounterTypeUuid: encounterConfig.getDischargeEncounterTypeUuid(),
+                        allowedActions: dischargeActions
+                    };
+                    actionConfigs[Constants.transferCode] = {
+                        encounterTypeUuid: encounterConfig.getTransferEncounterTypeUuid(),
+                        allowedActions: transferActions
+                    };
+                    actionConfigs[Constants.undoDischargeCode] = {
+                        encounterTypeUuid: encounterConfig.getDischargeEncounterTypeUuid(),
+                        allowedActions: undoDischargeActions
+                    };
+                }
+            };
+
+            var filterAction = function (actions, actionTypes) {
+                return _.filter(actions, function (action) {
+                    return actionTypes.indexOf(action.name.name) >= 0;
+                });
+            };
+
+            var getDispositionActions = function (actions) {
+                var visitSummary = $scope.visitSummary;
+                var stopDate = visitSummary && visitSummary.stopDateTime;
+                var isVisitOpen = (stopDate === null);
+                if (visitSummary && visitSummary.isDischarged() && isVisitOpen) {
+                    return filterAction(actions, ["Undo Discharge"]);
+                } else if (visitSummary && visitSummary.isAdmitted() && isVisitOpen) {
+                    return filterAction(actions, ["Transfer Patient", "Discharge Patient"]);
+                } else {
+                    return filterAction(actions, ["Admit Patient"]);
+                }
+            };
+
+            var getVisit = function () {
+                var visitUuid = $stateParams.visitUuid;
+                if (visitUuid !== 'undefined' && visitUuid !== 'null' && visitUuid !== '') {
+                    return visitService.getVisitSummary(visitUuid).then(function (response) {
+                        $scope.visitSummary = new Bahmni.Common.VisitSummary(response.data);
+                    });
+                } else {
+                    $scope.visitSummary = null;
+                    return $q.when({id: 1, status: "Returned from service.", promiseComplete: true});
+                }
+            };
+
+            var init = function () {
+                initializeActionConfig();
+                var defaultVisitType = appService.getAppDescriptor().getConfigValue('defaultVisitType');
+                var visitTypes = encounterConfig.getVisitTypes();
+                $scope.visitControl = new Bahmni.Common.VisitControl(visitTypes, defaultVisitType, visitService);
+                $scope.dashboard = Bahmni.Common.DisplayControl.Dashboard.create($scope.dashboardConfig || {}, $filter);
+                $scope.sectionGroups = $scope.dashboard.getSections($scope.diseaseTemplates);
+
+                return getVisit().then(dispositionService.getDispositionActions).then(function (response) {
+                    if (response.data && response.data.results && response.data.results.length) {
+                        $scope.dispositionActions = getDispositionActions(response.data.results[0].answers);
+                        if ($scope.visitSummary) {
+                            $scope.currentVisitType = $scope.visitSummary.visitType;
+                        }
+                    }
+                });
+            };
+
+            $scope.$watch('dispositionAction', function () {
+                var dispositionCode;
+                if ($scope.dispositionAction) {
+                    dispositionCode = getActionCode($scope.dispositionAction);
+                }
+                $scope.actions = dispositionCode ? actionConfigs[dispositionCode].allowedActions : [];
+            });
+
+            $scope.getDisplayForContinuingVisit = function () {
+                return "Admit";
+            };
+
+            $scope.getDisplay = function (displayFunction, display) {
+                if (displayFunction) {
+                    return $scope.call(displayFunction);
+                }
+                return display;
+            };
+
+            $scope.startNewVisit = function (visitTypeUuid) {
+                if ($scope.visitSummary) {
+                    visitService.endVisit($scope.visitSummary.uuid).then(function () {
+                        $scope.admit(visitTypeUuid);
+                    });
+                } else {
+                    $scope.admit(visitTypeUuid);
+                }
+            };
+
+            $scope.cancel = function () {
+                $location.url(Bahmni.ADT.Constants.patientsListUrl);
+                return $q.when({});
+            };
+
+            $scope.call = function (functionName) {
+                if (functionName) {
+                    return $scope[functionName]();
+                } else {
+                    return $q.when({});
+                }
+            };
+
+            $scope.visitExists = function () {
+                return $scope.visitSummary ? true : false;
+            };
+
+            var getEncounterData = function (encounterTypeUuid, visitTypeUuid) {
+                var encounterData = {};
+                encounterData.patientUuid = $scope.patient.uuid;
+                encounterData.encounterTypeUuid = encounterTypeUuid;
+                encounterData.visitTypeUuid = visitTypeUuid;
+                encounterData.observations = $scope.adtObservations;
+                encounterData.observations = _.filter(encounterData.observations, function (observation) {
+                    return !_.isEmpty(observation.value);
+                });
+                encounterData.locationUuid = locationUuid;
+                return encounterData;
+            };
+
+            var forwardUrl = function (response, option) {
+                var appDescriptor = appService.getAppDescriptor();
+                var forwardLink = appDescriptor.getConfig(option);
+                forwardLink = forwardLink && forwardLink.value;
+
+                var options = {
+                    'patientUuid': $scope.patient.uuid,
+                    'encounterUuid': response.encounterUuid,
+                    'visitUuid': response.visitUuid
+                };
+                if (forwardLink) {
+                    $window.location = appDescriptor.formatUrl(forwardLink, options);
+                }
+            };
+
+            var createEncounterAndContinue = function () {
+                var currentVisitTypeUuid = getCurrentVisitTypeUuid();
+                if (currentVisitTypeUuid !== null) {
+                    var encounterData = getEncounterData($scope.encounterConfig.getAdmissionEncounterTypeUuid(), currentVisitTypeUuid);
+                    return encounterService.create(encounterData).success(function (response) {
+                        logEncounter(response.patientUuid, response.encounterUuid, response.encounterType);
+                        if ($scope.visitSummary === null) {
+                            visitService.getVisitSummary(response.visitUuid).then(function (response) {
+                                $scope.visitSummary = new Bahmni.Common.VisitSummary(response.data);
+                            });
+                        }
+                        forwardUrl(response, "onAdmissionForwardTo");
+                    });
+                } else if ($scope.defaultVisitTypeName === null) {
+                    messagingService.showMessage("error", "MESSAGE_DEFAULT_VISIT_TYPE_NOT_FOUND_KEY");
+                } else {
+                    messagingService.showMessage("error", "MESSAGE_DEFAULT_VISIT_TYPE_INVALID_KEY");
                 }
                 return $q.when({});
             };
 
-            $scope.close = function () {
-                if ($scope.ngDialogData) {
-                    var appointment = _.find($scope.surgicalForm.surgicalAppointments, function (surgicalAppointment) {
-                        return surgicalAppointment.isBeingEdited;
+            $scope.admit = function () {
+                if ($scope.visitSummary && $scope.visitSummary.visitType !== $scope.defaultVisitTypeName) {
+                    ngDialog.openConfirm({
+                        template: 'views/visitChangeConfirmation.html',
+                        scope: $scope,
+                        closeByEscape: true
                     });
-
-                    delete $scope.surgicalForm.surgicalAppointments[appointment.sortWeight].isBeingEdited;
-                    delete $scope.ngDialogData.isBeingEdited;
+                } else {
+                    return createEncounterAndContinue();
                 }
+                return $q.when({});
+            };
+
+            $scope.cancelConfirmationDialog = function () {
                 ngDialog.close();
             };
 
-            $scope.goToForwardUrl = function () {
-                var forwardUrl = appService.getAppDescriptor().getConfigValue('patientDashboardUrl');
-                if (isProgramDashboardUrlConfigured(forwardUrl) && !$scope.enrollmentInfo) {
-                    messagingService.showMessage('error', forwardUrl.errorMessage);
+            var logVisit = function (patientUuid, eventType) {
+                var messageParams = {visitUuid: $scope.visitSummary.uuid, visitType: $scope.visitSummary.visitType};
+                return auditLogService.log(patientUuid, eventType, messageParams, 'MODULE_LABEL_INPATIENT_KEY');
+            };
+
+            var logEncounter = function (patientUuid, encounterUuid, encounterType) {
+                var messageParams = {encounterUuid: encounterUuid, encounterType: encounterType};
+                return auditLogService.log(patientUuid, 'EDIT_ENCOUNTER', messageParams, 'MODULE_LABEL_INPATIENT_KEY');
+            };
+
+            $scope.closeCurrentVisitAndStartNewVisit = function () {
+                if (defaultVisitTypeUuid !== null) {
+                    var encounter = getEncounterData($scope.encounterConfig.getAdmissionEncounterTypeUuid(), defaultVisitTypeUuid);
+                    visitService.endVisitAndCreateEncounter($scope.visitSummary.uuid, encounterService.buildEncounter(encounter)).success(function (response) {
+                        logVisit(encounter.patientUuid, "CLOSE_VISIT").then(function () {
+                            return visitService.getVisitSummary(response.visitUuid).then(function (response) {
+                                $scope.visitSummary = new Bahmni.Common.VisitSummary(response.data);
+                                return logVisit(encounter.patientUuid, "OPEN_VISIT");
+                            }).then(function () {
+                                return logEncounter(response.patientUuid, response.encounterUuid, response.encounterType);
+                            });
+                        }).then(function () {
+                            forwardUrl(response, "onAdmissionForwardTo");
+                        });
+                    });
+                } else if ($scope.defaultVisitTypeName === null) {
+                    messagingService.showMessage("error", "MESSAGE_DEFAULT_VISIT_TYPE_NOT_FOUND_KEY");
+                } else {
+                    messagingService.showMessage("error", "MESSAGE_DEFAULT_VISIT_TYPE_INVALID_KEY");
+                }
+                ngDialog.close();
+                return $q.when({});
+            };
+
+            $scope.continueWithCurrentVisit = function () {
+                createEncounterAndContinue();
+                ngDialog.close();
+            };
+
+            $scope.transfer = function () {
+                var encounterData = getEncounterData($scope.encounterConfig.getTransferEncounterTypeUuid(), getCurrentVisitTypeUuid());
+                return encounterService.create(encounterData).then(function (response) {
+                    logEncounter(response.data.patientUuid, response.data.encounterUuid, response.data.encounterType);
+                    forwardUrl(response.data, "onTransferForwardTo");
+                });
+            };
+
+            $scope.discharge = function () {
+                var encounterData = getEncounterData($scope.encounterConfig.getDischargeEncounterTypeUuid());
+                return spinner.forPromise(encounterService.discharge(encounterData).then(function (response) {
+                    logEncounter(response.data.patientUuid, response.data.encounterUuid, response.data.encounterType);
+                    forwardUrl(response.data, "onDischargeForwardTo");
+                }));
+            };
+
+            $scope.undoDischarge = function () {
+                return spinner.forPromise(encounterService.delete($scope.visitSummary.getDischargeEncounterUuid(), "Undo Discharge")).then(function (response) {
+                    var params = {
+                        'encounterUuid': $scope.visitSummary.getAdmissionEncounterUuid(),
+                        'visitUuid': $scope.visitSummary.uuid
+                    };
+                    var admissionEncounterType = $scope.encounterConfig.getEncounterTypeByUuid($scope.encounterConfig.getAdmissionEncounterTypeUuid());
+                    logEncounter($scope.patient.uuid, params.encounterUuid, admissionEncounterType['name']);
+                    forwardUrl(params, "onAdmissionForwardTo");
+                });
+            };
+
+            spinner.forPromise(init());
+            $anchorScroll();
+        }
+    ]);
+
+Bahmni.Common.AuditLogEventDetails = {
+    "USER_LOGIN_SUCCESS": {eventType: "USER_LOGIN_SUCCESS", message: "USER_LOGIN_SUCCESS_MESSAGE"},
+    "USER_LOGIN_FAILED": {eventType: "USER_LOGIN_FAILED", message: "USER_LOGIN_FAILED_MESSAGE"},
+    "USER_LOGOUT_SUCCESS": {eventType: "USER_LOGOUT_SUCCESS", message: "USER_LOGOUT_SUCCESS_MESSAGE"},
+    "OPEN_VISIT": {eventType: "OPEN_VISIT", message: "OPEN_VISIT_MESSAGE"},
+    "EDIT_VISIT": {eventType: "EDIT_VISIT", message: "EDIT_VISIT_MESSAGE"},
+    "CLOSE_VISIT": {eventType: "CLOSE_VISIT", message: "CLOSE_VISIT_MESSAGE"},
+    "CLOSE_VISIT_FAILED": {eventType: "CLOSE_VISIT_FAILED", message: "CLOSE_VISIT_FAILED_MESSAGE"},
+    "EDIT_ENCOUNTER": {eventType: "EDIT_ENCOUNTER", message: "EDIT_ENCOUNTER_MESSAGE"},
+
+    "VIEWED_REGISTRATION_PATIENT_SEARCH": {eventType: "VIEWED_REGISTRATION_PATIENT_SEARCH", message: "VIEWED_REGISTRATION_PATIENT_SEARCH_MESSAGE"},
+    "VIEWED_NEW_PATIENT_PAGE": {eventType: "VIEWED_NEW_PATIENT_PAGE", message: "VIEWED_NEW_PATIENT_PAGE_MESSAGE"},
+    "REGISTER_NEW_PATIENT": {eventType: "REGISTER_NEW_PATIENT", message: "REGISTER_NEW_PATIENT_MESSAGE"},
+    "EDIT_PATIENT_DETAILS": {eventType: "EDIT_PATIENT_DETAILS", message: "EDIT_PATIENT_DETAILS_MESSAGE"},
+    "ACCESSED_REGISTRATION_SECOND_PAGE": {eventType: "ACCESSED_REGISTRATION_SECOND_PAGE", message: "ACCESSED_REGISTRATION_SECOND_PAGE_MESSAGE"},
+    "VIEWED_PATIENT_DETAILS": {eventType: "VIEWED_PATIENT_DETAILS", message: "VIEWED_PATIENT_DETAILS_MESSAGE"},
+    "PRINT_PATIENT_STICKER": {eventType: "PRINT_PATIENT_STICKER", message: "PRINT_PATIENT_STICKER_MESSAGE"},
+
+    "VIEWED_CLINICAL_PATIENT_SEARCH": {eventType: "VIEWED_CLINICAL_PATIENT_SEARCH", message: "VIEWED_PATIENT_SEARCH_MESSAGE"},
+    "VIEWED_CLINICAL_DASHBOARD": {eventType: "VIEWED_CLINICAL_DASHBOARD", message: "VIEWED_CLINICAL_DASHBOARD_MESSAGE"},
+    "VIEWED_OBSERVATIONS_TAB": {eventType: "VIEWED_OBSERVATIONS_TAB", message: "VIEWED_OBSERVATIONS_TAB_MESSAGE"},
+    "VIEWED_SHAREDHEALTHRECORD_TAB": {eventType: "VIEWED_SHAREDHEALTHRECORD_TAB", message:"VIEWED_SHAREDHEALTHRECORD_TAB_MESSAGE"},
+    "VIEWED_DIAGNOSIS_TAB": {eventType: "VIEWED_DIAGNOSIS_TAB", message: "VIEWED_DIAGNOSIS_TAB_MESSAGE"},
+    "VIEWED_TREATMENT_TAB": {eventType: "VIEWED_TREATMENT_TAB", message: "VIEWED_TREATMENT_TAB_MESSAGE"},
+    "VIEWED_DISPOSITION_TAB": {eventType: "VIEWED_DISPOSITION_TAB", message: "VIEWED_DISPOSITION_TAB_MESSAGE"},
+    "VIEWED_DASHBOARD_SUMMARY": {eventType: "VIEWED_DASHBOARD_SUMMARY", message: "VIEWED_DASHBOARD_SUMMARY_MESSAGE"},
+    "VIEWED_ORDERS_TAB": {eventType: "VIEWED_ORDERS_TAB", message: "VIEWED_ORDERS_TAB_MESSAGE"},
+    "VIEWED_BACTERIOLOGY_TAB": {eventType: "VIEWED_BACTERIOLOGY_TAB", message: "VIEWED_BACTERIOLOGY_TAB_MESSAGE"},
+    "VIEWED_INVESTIGATION_TAB": {eventType: "VIEWED_INVESTIGATION_TAB", message: "VIEWED_INVESTIGATION_TAB_MESSAGE"},
+    "VIEWED_SUMMARY_PRINT": {eventType: "VIEWED_SUMMARY_PRINT", message: "VIEWED_SUMMARY_PRINT_MESSAGE"},
+    "VIEWED_VISIT_DASHBOARD": {eventType: "VIEWED_VISIT_DASHBOARD", message: "VIEWED_VISIT_DASHBOARD_MESSAGE"},
+    "VIEWED_VISIT_PRINT": {eventType: "VIEWED_VISIT_PRINT", message: "VIEWED_VISIT_PRINT_MESSAGE"},
+    "VIEWED_DASHBOARD_OBSERVATION": {eventType: "VIEWED_DASHBOARD_OBSERVATION", message: "VIEWED_DASHBOARD_OBSERVATION_MESSAGE"},
+    "VIEWED_PATIENTPROGRAM": {eventType: "VIEWED_PATIENTPROGRAM", message: "VIEWED_PATIENTPROGRAM_MESSAGE"},
+
+    "RUN_REPORT": {eventType: "RUN_REPORT", message: "RUN_REPORT_MESSAGE"}
+};
+
+'use strict';
+
+angular.module('bahmni.adt')
+    .controller('BedManagementController', [
+        '$scope', '$rootScope', '$stateParams', 'spinner', 'wardService', 'backlinkService',
+        function ($scope, $rootScope, $stateParams, spinner, wardService, backlinkService) {
+            $scope.wards = null;
+            $scope.encounterUuid = $stateParams.encounterUuid;
+            $scope.visitUuid = $stateParams.visitUuid;
+
+            var init = function () {
+                loadAllWards();
+                $scope.$watch(function () {
+                    return $rootScope.bedDetails;
+                }, function (newValue, oldValue) {
+                    if (newValue !== oldValue) {
+                        loadAllWards();
+                    }
+                });
+            };
+
+            var loadAllWards = function () {
+                spinner.forPromise(wardService.getWardsList().success(function (wardsList) {
+                    $scope.wards = wardsList.results;
+                }));
+            };
+
+            $scope.$on('$stateChangeSuccess', function () {
+                backlinkService.addUrl({
+                    url: "#/patient/" + $scope.patient.uuid + "/visit/" + $scope.visitUuid + "/",
+                    title: "Back to IPD dashboard",
+                    icon: "fa-medkit fa-bed fa-white"
+                });
+            });
+
+            init();
+        }]);
+
+'use strict';
+
+angular.module('bahmni.adt')
+    .controller('WardsController', ['$scope', '$rootScope', '$window', '$document', 'spinner', 'wardService',
+        function ($scope, $rootScope, $window, $document, spinner, wardService) {
+            $scope.wards = null;
+
+            var init = function () {
+                return loadAllWards();
+            };
+
+            var loadAllWards = function () {
+                return wardService.getWardsList().success(function (wardsList) {
+                    $scope.wards = wardsList.results;
+                });
+            };
+            spinner.forPromise(init());
+        }]);
+
+'use strict';
+
+angular.module('bahmni.adt')
+    .controller('WardController', ['$scope', '$rootScope', '$window', 'spinner', 'wardService', 'bedManagementService', 'userService',
+        function ($scope, $rootScope, $window, spinner, wardService, bedManagementService, userService) {
+            var init = function () {
+                if ($scope.readOnly) {
+                    $scope.expanded = $rootScope.currentUser.isFavouriteWard($scope.ward.ward.name);
+                    $scope.showWardList();
+                } else {
+                    $scope.expanded = ($rootScope.bedDetails && $rootScope.bedDetails.wardUuid === $scope.ward.ward.uuid);
+                    $scope.showWardLayout();
+                }
+            };
+
+            $scope.toggleExpandState = function () {
+                $scope.expanded = !$scope.expanded;
+                if (!$scope.expanded) {
+                    $scope.showWardList();
+                }
+                if ($scope.readOnly) {
+                    $rootScope.currentUser.toggleFavoriteWard($scope.ward.ward.name);
+                    userService.savePreferences();
+                }
+            };
+
+            $scope.toggleWardView = function () {
+                if ($scope.currentView === 'wardLayout') {
+                    $scope.showWardList();
+                } else {
+                    $scope.showWardLayout();
+                }
+                expandView();
+            };
+
+            $scope.showWardLayout = function () {
+                $scope.currentView = "wardLayout";
+            };
+
+            $scope.showWardList = function () {
+                $scope.currentView = "wardList";
+            };
+
+            var expandView = function () {
+                if (!$scope.expanded) {
+                    $scope.toggleExpandState();
+                }
+            };
+
+            init();
+        }]);
+
+'use strict';
+
+angular.module('bahmni.adt')
+    .controller('WardListController', ['$scope', 'queryService', 'spinner', '$q', '$window', '$stateParams', 'appService', '$rootScope',
+        function ($scope, queryService, spinner, $q, $window, $stateParams, appService, $rootScope) {
+            $scope.gotoPatientDashboard = function (patientUuid, visitUuid) {
+                var options = $.extend({}, $stateParams);
+                $.extend(options, {patientUuid: patientUuid, visitUuid: visitUuid || null});
+                $window.location = appService.getAppDescriptor().formatUrl(Bahmni.ADT.Constants.ipdDashboard, options, true);
+            };
+
+            var getTableDetails = function () {
+                var params = {
+                    q: "emrapi.sqlGet.wardsListDetails",
+                    v: "full",
+                    location_name: $scope.ward.ward.name
+                };
+
+                return queryService.getResponseFromQuery(params).then(function (response) {
+                    $scope.tableDetails = Bahmni.ADT.WardDetails.create(response.data, $rootScope.diagnosisStatus);
+                    $scope.tableHeadings = $scope.tableDetails.length > 0 ? Object.keys($scope.tableDetails[0]) : [];
+                });
+            };
+            spinner.forPromise(getTableDetails());
+        }]);
+
+'use strict';
+
+angular.module('bahmni.adt')
+    .controller('WardLayoutController', ['$scope', '$rootScope', '$window', 'spinner', 'wardService', 'bedManagementService', 'bedService', 'messagingService', 'appService', '$document', '$element',
+        function ($scope, $rootScope, $window, spinner, wardService, bedManagementService, bedService, messagingService, appService, $document, $element) {
+            $scope.selectedBed = null;
+            var maxPatientsConfig = appService.getAppDescriptor().getConfig("maxPatientsPerBed");
+            var maxPatientsPerBed = maxPatientsConfig ? maxPatientsConfig.value : 3;
+
+            var init = function () {
+                $element.find('.bed-info').hide();
+                spinner.forPromise(getBeds());
+
+                $document.bind('click', function () {
+                    $scope.hideBedInfoPopUp();
+                });
+            };
+
+            var getBeds = function () {
+                return wardService.bedsForWard($scope.ward.ward.uuid).success(function (result) {
+                    var groupedLayoutsByLocation = _.groupBy(result.bedLayouts, 'location');
+                    $scope.ward.layouts = [];
+                    _.map(groupedLayoutsByLocation, function (value, key) {
+                        var layout = {
+                            name: key,
+                            beds: bedManagementService.createLayoutGrid(value)
+                        };
+                        $scope.ward.layouts.push(layout);
+                    });
+                });
+            };
+
+            $scope.assignBed = function (bed) {
+                if (bed.patientInfo && bed.patientInfo.length >= maxPatientsPerBed) {
+                    alert("A max of " + maxPatientsPerBed + " patients are allowed per bed. Please select other bed.");
                     return;
                 }
-                var params = getDashboardParams(forwardUrl);
-                var formattedUrl = appService.getAppDescriptor().formatUrl(forwardUrl.link, params);
-                $window.open(formattedUrl);
-            };
-
-            var isProgramDashboardUrlConfigured = function (forwardUrl) {
-                return forwardUrl && forwardUrl.link && forwardUrl.link.includes('programs');
-            };
-
-            var getDashboardParams = function (forwardUrl) {
-                if (forwardUrl && forwardUrl.link && forwardUrl.link.includes('programs')) {
-                    return {
-                        patientUuid: $scope.enrollmentInfo.patient.uuid,
-                        dateEnrolled: $scope.enrollmentInfo.dateEnrolled,
-                        programUuid: $scope.enrollmentInfo.program.uuid,
-                        enrollment: $scope.enrollmentInfo.uuid
-                    };
-                }
-                return {
-                    patientUuid: $scope.selectedPatient.uuid
-                };
-            };
-
-            spinner.forPromise(init());
-        }]);
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .controller('calendarViewController', ['$scope', '$rootScope', '$state', '$stateParams', 'appService', 'patientService', 'locationService', 'ngDialog',
-        function ($scope, $rootScope, $state, $stateParams, appService, patientService, locationService, ngDialog) {
-            $scope.viewDate = $stateParams.viewDate || $state.viewDate || (moment().startOf('day')).toDate();
-            $state.viewDate = $scope.viewDate;
-            $scope.calendarConfig = appService.getAppDescriptor().getConfigValue("calendarView");
-
-            var addLocationsForFilters = function () {
-                var locations = {};
-                _.each($scope.locations, function (location) {
-                    locations[location.name] = true;
-                });
-                $scope.filters.locations = locations;
-            };
-
-            var init = function () {
-                $scope.filterParams = $state.filterParams;
-                $scope.filters = {};
-                $scope.filters.providers = [];
-                $scope.view = $state.view || 'Calendar';
-                $state.view = $scope.view;
-                $scope.weekOrDay = $state.weekOrDay || 'day';
-                $state.weekOrDay = $scope.weekOrDay;
-                if ($scope.weekOrDay === 'week') {
-                    $scope.weekStartDate = $state.weekStartDate || new Date(moment().startOf('week'));
-                    $state.weekStartDate = $scope.weekStartDate;
-                    $scope.weekEndDate = $state.weekEndDate || new Date(moment().endOf('week').endOf('day'));
-                    $state.weekEndDate = $scope.weekEndDate;
-                }
-                $scope.surgicalBlockSelected = {};
-                $scope.surgicalAppointmentSelected = {};
-                $scope.editDisabled = true;
-                $scope.moveButtonDisabled = true;
-                $scope.cancelDisabled = true;
-                $scope.addActualTimeDisabled = true;
-                $scope.surgeonList = _.map($rootScope.surgeons, function (surgeon) {
-                    var newVar = {
-                        name: surgeon.person.display,
-                        uuid: surgeon.uuid
-                    };
-                    newVar[surgeon.person.display] = false;
-                    var otCalendarColorAttribute = _.find(surgeon.attributes, function (attribute) {
-                        return attribute.attributeType.display === 'otCalendarColor';
-                    });
-                    newVar.otCalendarColor = getBackGroundHSLColorFor(otCalendarColorAttribute);
-                    return newVar;
-                });
-                $scope.filters.statusList = [];
-                setAppointmentStatusList($scope.view);
-                return locationService.getAllByTag('Operation Theater').then(function (response) {
-                    $scope.locations = response.data.results;
-                    addLocationsForFilters();
-                    $scope.filters = $scope.filterParams || $scope.filters;
-                    $scope.patient = $scope.filters.patient && $scope.filters.patient.value;
-                    $scope.applyFilters();
-                    return $scope.locations;
-                });
-            };
-
-            var setAppointmentStatusList = function (view) {
-                if (view === 'Calendar') {
-                    $scope.appointmentStatusList = [{name: Bahmni.OT.Constants.scheduled}, {name: Bahmni.OT.Constants.completed}];
-                } else {
-                    $scope.appointmentStatusList = [{name: Bahmni.OT.Constants.scheduled}, {name: Bahmni.OT.Constants.completed},
-                        {name: Bahmni.OT.Constants.postponed}, {name: Bahmni.OT.Constants.cancelled}];
+                if (shouldTransfer(bed)) {
+                    clearAssignmentError();
+                    assignBedToPatient(bed, $scope.encounterUuid);
                 }
             };
 
-            $scope.calendarView = function () {
-                $scope.weekOrDay = 'day';
-                $state.weekOrDay = $scope.weekOrDay;
-                $scope.view = 'Calendar';
-                $state.view = $scope.view;
-            };
-
-            $scope.listView = function () {
-                $scope.view = 'List View';
-                $state.view = $scope.view;
-            };
-
-            var getBackGroundHSLColorFor = function (otCalendarColorAttribute) {
-                var hue = otCalendarColorAttribute ? otCalendarColorAttribute.value.toString() : "0";
-                return "hsl(" + hue + ", 100%, 90%)";
-            };
-
-            $scope.applyFilters = function () {
-                $scope.filterParams = _.cloneDeep($scope.filters);
-                $state.filterParams = $scope.filterParams;
-            };
-
-            $scope.clearFilters = function () {
-                addLocationsForFilters();
-                $scope.filters.providers = [];
-                $scope.filters.statusList = [];
-                $scope.patient = "";
-                $scope.filters.patient = null;
-                removeFreeTextItem();
-
-                $scope.applyFilters();
-            };
-
-            var removeFreeTextItem = function () {
-                $("input.input")[0].value = "";
-                $("input.input")[1].value = "";
-            };
-
-            $scope.search = function () {
-                return patientService.search($scope.patient).then(function (response) {
-                    return response.data.pageOfResults;
-                });
-            };
-
-            $scope.onSelectPatient = function (data) {
-                $scope.filters.patient = data;
-                if ($scope.view === 'Calendar') {
-                    if (_.isEmpty($scope.filters.statusList)) {
-                        $scope.filters.statusList = [{name: Bahmni.OT.Constants.scheduled}, {name: Bahmni.OT.Constants.completed}];
-                    }
+            var shouldTransfer = function (bed) {
+                if (bed.patientInfo) {
+                    return confirm("This bed is already occupied. Do you want to assign another patient to the same bed?");
                 }
+                return true;
             };
 
-            $scope.clearThePatientFilter = function () {
-                $scope.filters.patient = null;
+            var clearAssignmentError = function () {
+                $element.find('.bed-info').hide();
             };
 
-            $scope.responseMap = function (data) {
-                return _.map(data, function (patientInfo) {
-                    patientInfo.label = patientInfo.givenName + " " + patientInfo.familyName + " " + "(" + patientInfo.identifier + ")";
-                    return patientInfo;
-                });
+            var assignBedToPatient = function (bed, encUuid) {
+                spinner.forPromise(bedService.assignBed(bed.bed.bedId, $scope.patientUuid, encUuid).success(function () {
+                    $rootScope.bed = bed.bed;
+                    bedService.setBedDetailsForPatientOnRootScope($scope.patientUuid);
+                    messagingService.showMessage('info', "Bed " + bed.bed.bedNumber + " is assigned successfully");
+                    $element.find('.bed-info').hide();
+                }));
             };
 
-            $scope.goToNewSurgicalAppointment = function () {
-                var options = {};
-                options['dashboardCachebuster'] = Math.random();
-                $state.go("newSurgicalAppointment", options);
+            $scope.getCurrentBed = function () {
+                return $rootScope.bedDetails;
             };
 
-            $scope.goToPreviousDate = function (date) {
-                $scope.viewDate = Bahmni.Common.Util.DateUtil.subtractDays(date, 1);
-                $state.viewDate = $scope.viewDate;
-            };
-
-            $scope.goToCurrentDate = function () {
-                $scope.viewDate = new Date(moment().startOf('day'));
-                $state.viewDate = $scope.viewDate;
-                $scope.weekOrDay = 'day';
-                $state.weekOrDay = $scope.weekOrDay;
-            };
-
-            $scope.goToNextDate = function (date) {
-                $scope.viewDate = Bahmni.Common.Util.DateUtil.addDays(date, 1);
-                $state.viewDate = $scope.viewDate;
-            };
-
-            $scope.goToCurrentWeek = function () {
-                $scope.weekStartDate = new Date(moment().startOf('week'));
-                $state.weekStartDate = $scope.weekStartDate;
-                $scope.weekEndDate = new Date(moment().endOf('week').endOf('day'));
-                $state.weekEndDate = $scope.weekEndDate;
-                $scope.weekOrDay = 'week';
-                $state.weekOrDay = $scope.weekOrDay;
-            };
-
-            $scope.goToNextWeek = function () {
-                $scope.weekStartDate = Bahmni.Common.Util.DateUtil.addDays($scope.weekStartDate, 7);
-                $scope.weekEndDate = Bahmni.Common.Util.DateUtil.addDays($scope.weekEndDate, 7);
-                $state.weekStartDate = $scope.weekStartDate;
-                $state.weekEndDate = $scope.weekEndDate;
-            };
-
-            $scope.goToPreviousWeek = function () {
-                $scope.weekStartDate = Bahmni.Common.Util.DateUtil.subtractDays($scope.weekStartDate, 7);
-                $scope.weekEndDate = Bahmni.Common.Util.DateUtil.subtractDays($scope.weekEndDate, 7);
-                $state.weekStartDate = $scope.weekStartDate;
-                $state.weekEndDate = $scope.weekEndDate;
-            };
-
-            $scope.$on("event:surgicalAppointmentSelect", function (event, surgicalAppointment, surgicalBlock) {
-                $scope.cancelDisabled = !(surgicalAppointment.status === Bahmni.OT.Constants.scheduled);
-                $scope.moveButtonDisabled = !(surgicalAppointment.status === Bahmni.OT.Constants.scheduled);
-                $scope.editDisabled = !((surgicalAppointment.status === Bahmni.OT.Constants.scheduled) || (surgicalAppointment.status === Bahmni.OT.Constants.completed));
-                $scope.addActualTimeDisabled = !((surgicalAppointment.status === Bahmni.OT.Constants.scheduled) || (surgicalAppointment.status === Bahmni.OT.Constants.completed));
-                $scope.surgicalAppointmentSelected = surgicalAppointment;
-                $scope.surgicalBlockSelected = surgicalBlock;
-            });
-
-            $scope.$on("event:surgicalBlockSelect", function (event, surgicalBlock) {
-                $scope.editDisabled = false;
-                $scope.moveButtonDisabled = true;
-                $scope.addActualTimeDisabled = true;
-                $scope.surgicalBlockSelected = surgicalBlock;
-                $scope.surgicalAppointmentSelected = {};
-
-                var surgicalBlockWithCompletedAppointments = function () {
-                    return _.find(surgicalBlock.surgicalAppointments, function (appointment) {
-                        return appointment.status === Bahmni.OT.Constants.completed;
-                    });
-                };
-
-                if (!surgicalBlockWithCompletedAppointments()) {
-                    $scope.cancelDisabled = false;
-                }
-            });
-
-            $scope.$on("event:surgicalBlockDeselect", function (event) {
-                $scope.editDisabled = true;
-                $scope.cancelDisabled = true;
-                $scope.moveButtonDisabled = true;
-                $scope.addActualTimeDisabled = true;
-                $scope.surgicalBlockSelected = {};
-                $scope.surgicalAppointmentSelected = {};
-            });
-
-            $scope.goToEdit = function ($event) {
-                if (Object.keys($scope.surgicalBlockSelected).length !== 0) {
-                    var options = {
-                        surgicalBlockUuid: $scope.surgicalBlockSelected.uuid
-                    };
-                    if (Object.keys($scope.surgicalAppointmentSelected).length !== 0) {
-                        options['surgicalAppointmentId'] = $scope.surgicalAppointmentSelected.id;
-                    }
-                    options['dashboardCachebuster'] = Math.random();
-                    $state.go("editSurgicalAppointment", options);
-                    $event.stopPropagation();
-                }
-            };
-
-            $scope.gotoMove = function () {
-                ngDialog.open({
-                    template: "views/moveAppointment.html",
-                    closeByDocument: false,
-                    controller: "moveSurgicalAppointmentController",
-                    className: "ngdialog-theme-default ng-dialog-adt-popUp ot-dialog",
-                    showClose: true,
-                    data: {
-                        surgicalBlock: $scope.surgicalBlockSelected,
-                        surgicalAppointment: $scope.surgicalAppointmentSelected
-                    }
-                });
-            };
-
-            $scope.addActualTime = function () {
-                ngDialog.open({
-                    template: "views/addActualTimeDialog.html",
-                    closeByDocument: false,
-                    controller: "surgicalAppointmentActualTimeController",
-                    className: 'ngdialog-theme-default ng-dialog-adt-popUp ot-dialog',
-                    showClose: true,
-                    data: {
-                        surgicalBlock: $scope.surgicalBlockSelected,
-                        surgicalAppointment: $scope.surgicalAppointmentSelected
-                    }
-                });
-            };
-
-            var cancelSurgicalAppointment = function () {
-                ngDialog.open({
-                    template: "views/cancelAppointment.html",
-                    closeByDocument: false,
-                    controller: "calendarViewCancelAppointmentController",
-                    className: 'ngdialog-theme-default ng-dialog-adt-popUp ot-dialog',
-                    showClose: true,
-                    data: {
-                        surgicalBlock: $scope.surgicalBlockSelected,
-                        surgicalAppointment: $scope.surgicalAppointmentSelected
-                    }
-                });
-            };
-
-            var cancelSurgicalBlock = function () {
-                ngDialog.open({
-                    template: "views/cancelSurgicalBlock.html",
-                    closeByDocument: false,
-                    controller: "cancelSurgicalBlockController",
-                    className: 'ngdialog-theme-default ng-dialog-adt-popUp ot-dialog',
-                    showClose: true,
-                    data: {
-                        surgicalBlock: $scope.surgicalBlockSelected,
-                        provider: $scope.surgicalBlockSelected.provider.person.display
-                    }
-                });
-            };
-
-            $scope.cancelSurgicalBlockOrSurgicalAppointment = function () {
-                if (!_.isEmpty($scope.surgicalAppointmentSelected)) {
-                    cancelSurgicalAppointment();
-                } else {
-                    cancelSurgicalBlock();
-                }
-            };
-            init();
-
-            $scope.$watch('view', function (newValue, oldValue) {
-                if (oldValue !== newValue) {
-                    if (newValue === 'Calendar') {
-                        setAppointmentStatusList(newValue);
-                        $scope.filters.statusList = _.filter($scope.filters.statusList, function (status) {
-                            return status.name === Bahmni.OT.Constants.scheduled || status.name === Bahmni.OT.Constants.completed;
-                        });
-                    }
-                    if (newValue === 'List View') {
-                        setAppointmentStatusList(newValue);
-                    }
-                    $scope.applyFilters();
-                }
-            });
-        }]);
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .controller('otCalendarController', ['$scope', '$q', '$interval', 'spinner', 'locationService', 'surgicalAppointmentService',
-        function ($scope, $q, $interval, spinner, locationService, surgicalAppointmentService) {
-            var updateCurrentDayTimeline = function () {
-                $scope.currentTimeLineHeight = heightPerMin * Bahmni.Common.Util.DateUtil.diffInMinutes($scope.calendarStartDatetime, new Date());
-            };
-            var heightPerMin = 120 / $scope.dayViewSplit;
-
-            var init = function () {
-                var dayStart = ($scope.dayViewStart || Bahmni.OT.Constants.defaultCalendarStartTime).split(':');
-                var dayEnd = ($scope.dayViewEnd || Bahmni.OT.Constants.defaultCalendarEndTime).split(':');
-                $scope.surgicalBlockSelected = {};
-                $scope.surgicalAppointmentSelected = {};
-                $scope.editDisabled = true;
-                $scope.cancelDisabled = true;
-                $scope.addActualTimeDisabled = true;
-                $scope.dayViewSplit = parseInt($scope.dayViewSplit) > 0 ? parseInt($scope.dayViewSplit) : 60;
-                $scope.calendarStartDatetime = Bahmni.Common.Util.DateUtil.addMinutes($scope.viewDate, (dayStart[0] * 60 + parseInt(dayStart[1])));
-                $scope.calendarEndDatetime = Bahmni.Common.Util.DateUtil.addMinutes($scope.viewDate, (dayEnd[0] * 60 + parseInt(dayEnd[1])));
-                updateCurrentDayTimeline();
-                $scope.rows = $scope.getRowsForCalendar();
-                var blocksStartDatetime = $scope.viewDate;
-                var blocksEndDatetime = moment($scope.viewDate).endOf('day');
-                return $q.all([locationService.getAllByTag('Operation Theater'),
-                    surgicalAppointmentService.getSurgicalBlocksInDateRange(blocksStartDatetime, blocksEndDatetime)]).then(function (response) {
-                        $scope.locations = response[0].data.results;
-
-                        $scope.surgicalBlocksByLocation = _.map($scope.locations, function (location) {
-                            return _.filter(response[1].data.results, function (surgicalBlock) {
-                                return surgicalBlock.location.uuid === location.uuid;
+            $scope.fetchBedInfo = function (cell) {
+                if (!cell.available && !cell.empty && !cell.patientInfo) {
+                    spinner.forPromise(bedService.getBedInfo(cell.bed.bedId).success(function (data) {
+                        cell.patientInfo = [];
+                        _.each(data.patients, function (patient) {
+                            cell.patientInfo.push({
+                                "name": patient.person.personName.givenName + " " + (patient.person.personName.familyName === null ? "" : patient.person.personName.familyName),
+                                "identifier": patient.identifiers[0].identifier,
+                                "gender": patient.person.gender
                             });
                         });
-                    });
-            };
-
-            $scope.intervals = function () {
-                var dayStart = ($scope.dayViewStart || '00:00').split(':');
-                var dayEnd = ($scope.dayViewEnd || '23:59').split(':');
-                var noOfIntervals = ((dayEnd[0] * 60 + parseInt(dayEnd[1])) - (dayStart[0] * 60 + parseInt(dayStart[1]))) / $scope.dayViewSplit;
-                return Math.ceil(noOfIntervals);
-            };
-
-            $scope.getRowsForCalendar = function () {
-                var rows = [];
-                for (var i = 0; i < $scope.intervals(); i++) {
-                    var row = {
-                        date: Bahmni.Common.Util.DateUtil.addMinutes($scope.calendarStartDatetime, i * ($scope.dayViewSplit))
-                    };
-                    rows.push(row);
-                }
-                return rows;
-            };
-
-            $scope.shouldDisplayCurrentTimeLine = function () {
-                return moment().isBefore($scope.calendarEndDatetime) && moment().isAfter($scope.calendarStartDatetime);
-            };
-
-            var timer = $interval(updateCurrentDayTimeline, 3000000);
-
-            $scope.$on('$destroy', function () {
-                $interval.cancel(timer);
-            });
-
-            $scope.$watch("viewDate", function (oldValue, newValue) {
-                if (oldValue.getTime() !== newValue.getTime()) {
-                    spinner.forPromise(init());
-                }
-            });
-            spinner.forPromise(init());
-        }]);
-
-'use strict';
-
-angular.module('bahmni.ot').controller('surgicalAppointmentActualTimeController', [
-    '$scope', 'ngDialog', 'surgicalAppointmentService', 'messagingService', 'surgicalAppointmentHelper',
-    function ($scope, ngDialog, surgicalAppointmentService, messagingService, surgicalAppointmentHelper) {
-        var surgicalBlock = $scope.ngDialogData.surgicalBlock;
-        var surgicalAppointment = $scope.ngDialogData.surgicalAppointment;
-
-        var calculateActualEndTime = function () {
-            var totalAppointmentsDuration = 0;
-            var sortedAppointments = _.sortBy(surgicalBlock.surgicalAppointments, 'sortWeight');
-            _.find(sortedAppointments, function (appointment) {
-                totalAppointmentsDuration += surgicalAppointmentHelper.getEstimatedDurationForAppointment(appointment);
-                return appointment.id === surgicalAppointment.id;
-            });
-            var appointmentEndTime = moment(surgicalBlock.startDatetime).toDate();
-            appointmentEndTime = Bahmni.Common.Util.DateUtil.addMinutes(appointmentEndTime, totalAppointmentsDuration);
-            return appointmentEndTime;
-        };
-
-        var init = function () {
-            var calculatedAppointmentEndTime = calculateActualEndTime();
-            var appointmentDuration = surgicalAppointmentHelper.getEstimatedDurationForAppointment(surgicalAppointment);
-            $scope.actualStartTime = (surgicalAppointment.actualStartDatetime && moment(surgicalAppointment.actualStartDatetime).toDate()) ||
-                Bahmni.Common.Util.DateUtil.subtractSeconds(calculatedAppointmentEndTime, appointmentDuration * 60);
-            $scope.actualEndTime = (surgicalAppointment.actualEndDatetime && moment(surgicalAppointment.actualEndDatetime).toDate())
-                || calculatedAppointmentEndTime;
-            $scope.notes = surgicalAppointment.notes;
-            $scope.patientDisplayLabel = surgicalAppointmentHelper.getPatientDisplayLabel(surgicalAppointment.patient.display);
-        };
-
-        $scope.isStartDatetimeBeforeEndDatetime = function (startDate, endDate) {
-            if (startDate && endDate) {
-                return startDate < endDate;
-            }
-            return true;
-        };
-
-        $scope.add = function () {
-            if (!$scope.isStartDatetimeBeforeEndDatetime($scope.actualStartTime, $scope.actualEndTime)) {
-                messagingService.showMessage('error', "Actual start time should be less than actual end time");
-                return;
-            }
-            var surgicalAppointment = {};
-            surgicalAppointment.id = $scope.ngDialogData.surgicalAppointment.id;
-            surgicalAppointment.uuid = $scope.ngDialogData.surgicalAppointment.uuid;
-            surgicalAppointment.actualStartDatetime = $scope.actualStartTime;
-            surgicalAppointment.actualEndDatetime = $scope.actualEndTime;
-            surgicalAppointment.status = $scope.actualStartTime && Bahmni.OT.Constants.completed || Bahmni.OT.Constants.scheduled;
-            surgicalAppointment.notes = $scope.notes;
-            surgicalAppointment.surgicalBlock = {uuid: $scope.ngDialogData.surgicalBlock.uuid};
-            surgicalAppointment.patient = {uuid: $scope.ngDialogData.surgicalAppointment.patient.uuid};
-            surgicalAppointment.sortWeight = $scope.ngDialogData.surgicalAppointment.sortWeight;
-            surgicalAppointmentService.updateSurgicalAppointment(surgicalAppointment).then(function (response) {
-                $scope.ngDialogData.surgicalAppointment.actualStartDatetime = response.data.actualStartDatetime;
-                $scope.ngDialogData.surgicalAppointment.actualEndDatetime = response.data.actualEndDatetime;
-                $scope.ngDialogData.surgicalAppointment.status = response.data.status;
-                $scope.ngDialogData.surgicalAppointment.notes = response.data.notes;
-                var message = 'Actual time added to ' + surgicalAppointmentHelper.getPatientDisplayLabel($scope.ngDialogData.surgicalAppointment.patient.display) + ' - ' + $scope.ngDialogData.surgicalBlock.location.name;
-                messagingService.showMessage('info', message);
-                ngDialog.close();
-            });
-        };
-
-        $scope.isActualTimeRequired = function () {
-            return $scope.actualStartTime || $scope.actualEndTime || $scope.notes;
-        };
-
-        $scope.close = function () {
-            ngDialog.close();
-        };
-        init();
-    }]);
-
-'use strict';
-
-angular.module('bahmni.ot').controller('calendarViewCancelAppointmentController', [
-    '$scope', '$translate', '$q', 'ngDialog', 'surgicalAppointmentService', 'messagingService', 'surgicalAppointmentHelper',
-    function ($scope, $translate, $q, ngDialog, surgicalAppointmentService, messagingService, surgicalAppointmentHelper) {
-        var ngDialogSurgicalAppointment = $scope.ngDialogData.surgicalAppointment;
-        var attributes = surgicalAppointmentHelper.getAppointmentAttributes(ngDialogSurgicalAppointment);
-        $scope.appointment = {
-            estTimeHours: attributes.estTimeHours,
-            estTimeMinutes: attributes.estTimeMinutes,
-            patient: surgicalAppointmentHelper.getPatientDisplayLabel(ngDialogSurgicalAppointment.patient.display),
-            notes: ngDialogSurgicalAppointment.notes,
-            status: ngDialogSurgicalAppointment.status
-        };
-
-        $scope.confirmCancelAppointment = function () {
-            var surgicalAppointment = {};
-            surgicalAppointment.id = $scope.ngDialogData.surgicalAppointment.id;
-            surgicalAppointment.uuid = $scope.ngDialogData.surgicalAppointment.uuid;
-            surgicalAppointment.notes = $scope.appointment.notes;
-            surgicalAppointment.status = $scope.appointment.status;
-            surgicalAppointment.surgicalBlock = {uuid: $scope.ngDialogData.surgicalBlock.uuid};
-            surgicalAppointment.patient = {uuid: ngDialogSurgicalAppointment.patient.uuid};
-            surgicalAppointment.sortWeight = null;
-            $q.all([surgicalAppointmentService.updateSurgicalAppointment(surgicalAppointment), updateSortWeightOfSurgicalAppointments()]).then(function (response) {
-                ngDialogSurgicalAppointment.patient = response[0].data.patient;
-                ngDialogSurgicalAppointment.status = response[0].data.status;
-                ngDialogSurgicalAppointment.notes = response[0].data.notes;
-                ngDialogSurgicalAppointment.sortWeight = response[0].data.sortWeight;
-                var message = '';
-                if (ngDialogSurgicalAppointment.status === Bahmni.OT.Constants.postponed) {
-                    message = $translate.instant("OT_SURGICAL_APPOINTMENT_POSTPONED_MESSAGE");
-                } else if (ngDialogSurgicalAppointment.status === Bahmni.OT.Constants.cancelled) {
-                    message = $translate.instant("OT_SURGICAL_APPOINTMENT_CANCELLED_MESSAGE");
-                }
-                message = message + surgicalAppointmentHelper.getPatientDisplayLabel($scope.ngDialogData.surgicalAppointment.patient.display) + ' - ' + $scope.ngDialogData.surgicalBlock.location.name;
-                messagingService.showMessage('info', message);
-                ngDialog.close();
-            });
-        };
-
-        var updateSortWeightOfSurgicalAppointments = function () {
-            var surgicalBlock = _.cloneDeep($scope.ngDialogData.surgicalBlock);
-            var surgicalAppointments = _.filter(surgicalBlock.surgicalAppointments, function (appointment) {
-                return appointment.uuid !== $scope.ngDialogData.surgicalAppointment.uuid && appointment.status !== 'POSTPONED' && appointment.status !== 'CANCELLED';
-            });
-            surgicalBlock.surgicalAppointments = _.map(surgicalAppointments, function (appointment, index) {
-                appointment.sortWeight = index;
-                return appointment;
-            });
-            surgicalBlock.provider = {uuid: surgicalBlock.provider.uuid};
-            surgicalBlock.location = {uuid: surgicalBlock.location.uuid};
-            surgicalBlock.surgicalAppointments = _.map(surgicalBlock.surgicalAppointments, function (appointment) {
-                appointment.patient = {uuid: appointment.patient.uuid};
-                appointment.surgicalAppointmentAttributes = _.values(appointment.surgicalAppointmentAttributes).filter(function (attribute) {
-                    return !_.isUndefined(attribute.value);
-                });
-                return _.omit(appointment, ['derivedAttributes', 'surgicalBlock', 'bedNumber', 'bedLocation']);
-            });
-
-            return surgicalAppointmentService.updateSurgicalBlock(surgicalBlock);
-        };
-
-        $scope.closeDialog = function () {
-            ngDialog.close();
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.ot').controller('surgicalBlockViewCancelAppointmentController', ['$scope', 'ngDialog', 'surgicalAppointmentHelper',
-    function ($scope, ngDialog, surgicalAppointmentHelper) {
-        var surgicalAppointment = $scope.ngDialogData.surgicalAppointment;
-        $scope.appointment = {
-            estTimeHours: surgicalAppointment.surgicalAppointmentAttributes.estTimeHours.value,
-            estTimeMinutes: surgicalAppointment.surgicalAppointmentAttributes.estTimeMinutes.value,
-            patient: surgicalAppointment.patient.label || surgicalAppointmentHelper.getPatientDisplayLabel(surgicalAppointment.patient.display),
-            notes: surgicalAppointment.notes,
-            status: surgicalAppointment.status
-        };
-
-        $scope.confirmCancelAppointment = function () {
-            var actualAppointment = _.find($scope.ngDialogData.surgicalForm.surgicalAppointments, function (appointment) {
-                return appointment.isBeingEdited;
-            });
-            if (actualAppointment.id == null) {
-                _.remove($scope.ngDialogData.surgicalForm.surgicalAppointments, actualAppointment);
-                ngDialog.close();
-            }
-            actualAppointment.status = $scope.appointment.status;
-            actualAppointment.notes = $scope.appointment.notes;
-            actualAppointment.sortWeight = null;
-            delete actualAppointment.isBeingEdited;
-            $scope.ngDialogData.updateAvailableBlockDurationFn();
-            ngDialog.close();
-        };
-
-        $scope.closeDialog = function () {
-            var actualAppointment = _.find($scope.ngDialogData.surgicalForm.surgicalAppointments, function (appointment) {
-                return appointment.isBeingEdited;
-            });
-            delete actualAppointment.isBeingEdited;
-            ngDialog.close();
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.ot').controller('cancelSurgicalBlockController', [
-    '$scope', '$state', '$translate', 'ngDialog', 'surgicalAppointmentService', 'messagingService',
-    function ($scope, $state, $translate, ngDialog, surgicalAppointmentService, messagingService) {
-        var surgicalBlock = $scope.ngDialogData.surgicalBlock;
-
-        $scope.confirmCancelSurgicalBlock = function () {
-            _.forEach(surgicalBlock.surgicalAppointments, function (appointment) {
-                if (appointment.status === 'SCHEDULED') {
-                    appointment.status = $scope.surgicalBlock.status;
-                    appointment.notes = $scope.surgicalBlock.notes;
-                    appointment.sortWeight = null;
-                }
-                appointment.patient = {uuid: appointment.patient.uuid};
-            });
-            surgicalBlock.voided = true;
-            surgicalBlock.voidReason = $scope.surgicalBlock.notes;
-            surgicalBlock.provider = {uuid: surgicalBlock.provider.uuid};
-            surgicalBlock.location = {uuid: surgicalBlock.location.uuid};
-
-            surgicalBlock.surgicalAppointments = _.map(surgicalBlock.surgicalAppointments, function (appointment) {
-                return _.omit(appointment, ['derivedAttributes', 'bedNumber', 'bedLocation']);
-            });
-
-            surgicalAppointmentService.updateSurgicalBlock(surgicalBlock).then(function (response) {
-                var message = '';
-                if ($scope.surgicalBlock.status === Bahmni.OT.Constants.postponed) {
-                    message = $translate.instant("OT_SURGICAL_BLOCK_POSTPONED_MESSAGE");
-                } else if ($scope.surgicalBlock.status === Bahmni.OT.Constants.cancelled) {
-                    message = $translate.instant("OT_SURGICAL_BLOCK_CANCELLED_MESSAGE");
-                }
-                message += response.data.provider.person.display;
-                messagingService.showMessage('info', message);
-                ngDialog.close();
-                var options = {};
-                options['dashboardCachebuster'] = Math.random();
-                $state.go("otScheduling", options);
-            });
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .controller('listViewController', ['$scope', '$rootScope', '$q', 'spinner', 'surgicalAppointmentService', 'appService', 'surgicalAppointmentHelper', 'surgicalBlockFilter', 'printer',
-        function ($scope, $rootScope, $q, spinner, surgicalAppointmentService, appService, surgicalAppointmentHelper, surgicalBlockFilter, printer) {
-            var startDatetime = moment($scope.viewDate).toDate();
-            var surgicalBlockMapper = new Bahmni.OT.SurgicalBlockMapper();
-            var endDatetime = moment(startDatetime).endOf('day').toDate();
-            $scope.tableInfo = [
-                {heading: 'Status', sortInfo: 'status'},
-                {heading: 'Day', sortInfo: 'derivedAttributes.expectedStartDate'},
-                {heading: 'Date', sortInfo: 'derivedAttributes.expectedStartDate'},
-                {heading: 'Identifier', sortInfo: 'derivedAttributes.patientIdentifier'},
-                {heading: 'Patient Name', sortInfo: 'derivedAttributes.patientName'},
-                {heading: 'Patient Age', sortInfo: 'derivedAttributes.patientAge'},
-                {heading: 'Start Time', sortInfo: 'derivedAttributes.expectedStartTime'},
-                {heading: 'Est Time', sortInfo: 'derivedAttributes.duration'},
-                {heading: 'Actual Time', sortInfo: 'actualStartDatetime'},
-                {heading: 'OT#', sortInfo: 'surgicalBlock.location.name'},
-                {heading: 'Procedure(s)', sortInfo: 'surgicalAppointmentAttributes.procedure.value'},
-                {heading: 'Notes', sortInfo: 'surgicalAppointmentAttributes.notes.value'},
-                {heading: 'Surgeon', sortInfo: 'surgicalBlock.provider.person.display'},
-                {heading: 'Other Surgeon', sortInfo: 'surgicalAppointmentAttributes.otherSurgeon.value.person.display'},
-                {heading: 'Surgical Assistant', sortInfo: 'surgicalAppointmentAttributes.surgicalAssistant.value'},
-                {heading: 'Anaesthetist', sortInfo: 'surgicalAppointmentAttributes.anaesthetist.value'},
-                {heading: 'Scrub Nurse', sortInfo: 'surgicalAppointmentAttributes.scrubNurse.value'},
-                {heading: 'Circulating Nurse', sortInfo: 'surgicalAppointmentAttributes.circulatingNurse.value'},
-                {heading: 'Status Change Notes', sortInfo: 'notes'},
-                {heading: 'Bed Location', sortInfo: 'bedLocation'},
-                {heading: 'Bed ID', sortInfo: 'bedNumber'}];
-
-            var filterSurgicalBlocksAndMapAppointmentsForDisplay = function (surgicalBlocks) {
-                var clonedSurgicalBlocks = _.cloneDeep(surgicalBlocks);
-                var filteredSurgicalBlocks = surgicalBlockFilter(clonedSurgicalBlocks, $scope.filterParams);
-                var mappedSurgicalBlocks = _.map(filteredSurgicalBlocks, function (surgicalBlock) {
-                    return surgicalBlockMapper.map(surgicalBlock, $rootScope.attributeTypes, $rootScope.surgeons);
-                });
-                mappedSurgicalBlocks = _.map(mappedSurgicalBlocks, function (surgicalBlock) {
-                    var blockStartDatetime = surgicalBlock.startDatetime;
-                    surgicalBlock.surgicalAppointments = _.map(surgicalBlock.surgicalAppointments, function (appointment) {
-                        var mappedAppointment = _.cloneDeep(appointment);
-                        mappedAppointment.surgicalBlock = surgicalBlock;
-                        mappedAppointment.derivedAttributes = {};
-
-                        var estTimeHours = mappedAppointment.surgicalAppointmentAttributes['estTimeHours'] && mappedAppointment.surgicalAppointmentAttributes['estTimeHours'].value;
-                        var estTimeMinutes = mappedAppointment.surgicalAppointmentAttributes['estTimeMinutes'] && mappedAppointment.surgicalAppointmentAttributes['estTimeMinutes'].value;
-                        var cleaningTime = mappedAppointment.surgicalAppointmentAttributes['cleaningTime'] && mappedAppointment.surgicalAppointmentAttributes['cleaningTime'].value;
-
-                        mappedAppointment.derivedAttributes.duration = surgicalAppointmentHelper.getAppointmentDuration(
-                            estTimeHours, estTimeMinutes, cleaningTime
-                        );
-                        mappedAppointment.derivedAttributes.expectedStartDate = moment(blockStartDatetime).startOf('day').toDate();
-                        mappedAppointment.derivedAttributes.patientIdentifier = mappedAppointment.patient.display.split(' - ')[0];
-                        mappedAppointment.derivedAttributes.patientAge = mappedAppointment.patient.person.age;
-                        mappedAppointment.derivedAttributes.patientName = mappedAppointment.patient.display.split(' - ')[1];
-                        if (mappedAppointment.status === Bahmni.OT.Constants.completed || mappedAppointment.status === Bahmni.OT.Constants.scheduled) {
-                            mappedAppointment.derivedAttributes.expectedStartTime = blockStartDatetime;
-                            blockStartDatetime = Bahmni.Common.Util.DateUtil.addMinutes(blockStartDatetime, mappedAppointment.derivedAttributes.duration);
-                        }
-                        return mappedAppointment;
-                    });
-                    return surgicalBlock;
-                });
-
-                var surgicalAppointmentList = _.reduce(mappedSurgicalBlocks, function (surgicalAppointmentList, block) {
-                    return surgicalAppointmentList.concat(block.surgicalAppointments);
-                }, []);
-
-                var filteredSurgicalAppointmentsByStatus = surgicalAppointmentHelper.filterSurgicalAppointmentsByStatus(
-                    surgicalAppointmentList, _.map($scope.filterParams.statusList, function (status) {
-                        return status.name;
                     }));
-
-                var filteredSurgicalAppointmentsByPatient = surgicalAppointmentHelper.filterSurgicalAppointmentsByPatient(
-                    filteredSurgicalAppointmentsByStatus, $scope.filterParams.patient);
-                $scope.surgicalAppointmentList = _.sortBy(filteredSurgicalAppointmentsByPatient, ["derivedAttributes.expectedStartDate", "surgicalBlock.location.name", "derivedAttributes.expectedStartDatetime"]);
-            };
-
-            var init = function (startDatetime, endDatetime) {
-                $scope.addActualTimeDisabled = true;
-                $scope.editDisabled = true;
-                $scope.cancelDisabled = true;
-                $scope.reverseSort = false;
-                $scope.sortColumn = "";
-                return $q.all([surgicalAppointmentService.getSurgicalBlocksInDateRange(startDatetime, endDatetime, true)]).then(function (response) {
-                    $scope.surgicalBlocks = response[0].data.results;
-                    filterSurgicalBlocksAndMapAppointmentsForDisplay($scope.surgicalBlocks);
-                });
-            };
-
-            $scope.isCurrentDateinWeekView = function (appointmentDate) {
-                return _.isEqual(moment().startOf('day').toDate(), appointmentDate) && $scope.weekOrDay === 'week';
-            };
-            $scope.printPage = function () {
-                var printTemplateUrl = appService.getAppDescriptor().getConfigValue("printListViewTemplateUrl") || 'views/listView.html';
-                printer.print(printTemplateUrl, {
-                    surgicalAppointmentList: $scope.surgicalAppointmentList,
-                    weekStartDate: $scope.weekStartDate,
-                    weekEndDate: $scope.weekEndDate,
-                    viewDate: $scope.viewDate,
-                    weekOrDay: $scope.weekOrDay,
-                    isCurrentDate: $scope.isCurrentDateinWeekView
-                });
-            };
-
-            $scope.sortSurgicalAppointmentsBy = function (sortColumn) {
-                var emptyObjects = _.filter($scope.surgicalAppointmentList, function (appointment) {
-                    return !_.property(sortColumn)(appointment);
-                });
-                var nonEmptyObjects = _.difference($scope.surgicalAppointmentList, emptyObjects);
-                var sortedNonEmptyObjects = _.sortBy(nonEmptyObjects, sortColumn);
-                if ($scope.reverseSort) {
-                    sortedNonEmptyObjects.reverse();
                 }
-                $scope.surgicalAppointmentList = sortedNonEmptyObjects.concat(emptyObjects);
-                $scope.sortColumn = sortColumn;
-                $scope.reverseSort = !$scope.reverseSort;
             };
 
-            $scope.selectSurgicalAppointment = function ($event, appointment) {
-                $scope.$emit("event:surgicalAppointmentSelect", appointment, appointment.surgicalBlock);
-                $event.stopPropagation();
+            $scope.hideBedInfoPopUp = function () {
+                $scope.selectedBed = null;
+                $scope.$apply();
             };
 
-            $scope.deselectSurgicalAppointment = function ($event) {
-                $scope.$emit("event:surgicalBlockDeselect");
-                $event.stopPropagation();
-            };
-
-            $scope.$watch("viewDate", function () {
-                if ($scope.weekOrDay === 'day') {
-                    startDatetime = moment($scope.viewDate).toDate();
-                    endDatetime = moment(startDatetime).endOf('day').toDate();
-                    spinner.forPromise(init(startDatetime, endDatetime));
+            $scope.setBedDetails = function (cell) {
+                $element.find('.bed-info').hide();
+                $scope.selectedBed = cell;
+                $scope.$apply();
+                if (!cell.empty) {
+                    $element.find('.bed-info').show();
                 }
-            });
-
-            $scope.$watch("weekStartDate", function () {
-                if ($scope.weekOrDay === 'week') {
-                    startDatetime = moment($scope.weekStartDate).toDate();
-                    endDatetime = moment($scope.weekEndDate).toDate();
-                    spinner.forPromise(init(startDatetime, endDatetime));
-                }
-            });
-
-            $scope.$watch("filterParams", function (oldValue, newValue) {
-                if (oldValue !== newValue) {
-                    filterSurgicalBlocksAndMapAppointmentsForDisplay($scope.surgicalBlocks);
-                }
-            });
-
-            $scope.isStatusPostponed = function (status) {
-                return status === Bahmni.OT.Constants.postponed;
             };
 
-            $scope.isStatusCancelled = function (status) {
-                return status === Bahmni.OT.Constants.cancelled;
+            $scope.highlightCurrentPatient = function (cell) {
+                var currentBed = $scope.getCurrentBed();
+                return !$scope.readOnly && (currentBed && currentBed.bedId === cell.bed.bedId);
             };
 
-            spinner.forPromise(init(startDatetime, endDatetime));
+            init();
         }]);
 
 'use strict';
 
-angular.module('bahmni.ot').controller('moveSurgicalAppointmentController', ['$rootScope', '$scope', '$state', '$q', 'ngDialog', 'surgicalAppointmentService', 'surgicalAppointmentHelper', 'surgicalBlockHelper', 'messagingService',
-    function ($rootScope, $scope, $state, $q, ngDialog, surgicalAppointmentService, surgicalAppointmentHelper, surgicalBlockHelper, messagingService) {
-        var init = function () {
-            $scope.surgicalAppointment = $scope.ngDialogData.surgicalAppointment;
-            $scope.sourceSurgicalBlock = $scope.ngDialogData.surgicalBlock;
-            $scope.appointmentDuration = surgicalAppointmentHelper.getEstimatedDurationForAppointment($scope.surgicalAppointment);
-        };
+Bahmni.ADT.WardDetails = {};
 
-        var surgicalBlockMapper = new Bahmni.OT.SurgicalBlockMapper();
-        $scope.changeInSurgeryDate = function () {
-            if (!$scope.dateForMovingSurgery) {
-                $scope.availableSurgicalBlocksForGivenDate = [];
-                return;
+Bahmni.ADT.WardDetails.create = function (details, diagnosisStatus) {
+    var detailsMap = {};
+    var attributesToCopy = ["Bed", "Name", "Id", "Name", "Age", "District", "Village", "Admission By", "Admission Time", "Disposition By", "Disposition Time", "ADT Notes"];
+    var diagnosisProperties = ["Diagnosis", "Diagnosis Certainty", "Diagnosis Order", "Diagnosis Status", "Diagnosis Provider", "Diagnosis Datetime"];
+    var hiddenAttributesToCopy = ["Patient Uuid", "Visit Uuid"];
+
+    var copyProperties = function (newObject, oldObject, properties) {
+        properties.forEach(function (property) {
+            newObject[property] = oldObject[property];
+        });
+        return newObject;
+    };
+
+    var removeDuplicateRuledOutDiagnosis = function (rows) {
+        rows.forEach(function (row) {
+            var ruledOutDiagnoses = _.map(_.filter(row.Diagnosis, {'ruledOut': true}), 'Diagnosis');
+            _.remove(row.Diagnosis, function (diagnosisObj) {
+                return _.includes(ruledOutDiagnoses, diagnosisObj.Diagnosis) && !diagnosisObj.ruledOut;
+            });
+        });
+        return rows;
+    };
+
+    details.forEach(function (detail) {
+        detailsMap[detail.Id] = detailsMap[detail.Id] || copyProperties({}, detail, attributesToCopy);
+        detailsMap[detail.Id].Diagnosis = detailsMap[detail.Id].Diagnosis || [];
+        if (detail.Diagnosis !== undefined) {
+            var diagnosis = copyProperties({}, detail, diagnosisProperties);
+            diagnosis.ruledOut = diagnosis["Diagnosis Status"] === "Ruled Out Diagnosis";
+            if (diagnosis.ruledOut) {
+                diagnosis.diagnosisStatus = diagnosisStatus;
             }
-            var startDateTime = $scope.dateForMovingSurgery;
-            var endDateTime = moment($scope.dateForMovingSurgery).endOf("day").toDate();
-            surgicalAppointmentService.getSurgicalBlocksInDateRange(startDateTime, endDateTime, false).then(function (response) {
-                var surgicalBlocksOfThatDate = _.map(response.data.results, function (surgicalBlock) {
-                    return surgicalBlockMapper.map(surgicalBlock, $rootScope.attributeTypes, $rootScope.surgeons);
-                });
-                $scope.availableBlocks = _.filter(surgicalBlocksOfThatDate, function (surgicalBlock) {
-                    return surgicalBlockHelper.getAvailableBlockDuration(surgicalBlock) >= $scope.appointmentDuration && surgicalBlock.uuid !== $scope.ngDialogData.surgicalBlock.uuid;
-                });
-                $scope.availableSurgicalBlocksForGivenDate = _.map($scope.availableBlocks, function (surgicalBlock) {
-                    var blockStartTime = Bahmni.Common.Util.DateUtil.formatTime(surgicalBlock.startDatetime);
-                    var blockEndTime = Bahmni.Common.Util.DateUtil.formatTime(surgicalBlock.endDatetime);
-                    var providerName = surgicalBlock.provider.person.display;
-                    var operationTheatre = surgicalBlock.location.name;
-                    var validAppointments = _.filter(surgicalBlock.surgicalAppointments, function (appointment) {
-                        return appointment.status !== 'POSTPONED' && appointment.status !== 'CANCELLED';
-                    });
+            detailsMap[detail.Id].Diagnosis.push(diagnosis);
+        }
+        var hiddenProperties = copyProperties({}, detail, hiddenAttributesToCopy);
+        detailsMap[detail.Id].hiddenAttributes = detailsMap[detail.Id].hiddenAttributes || {};
+        detailsMap[detail.Id].hiddenAttributes.patientUuid = hiddenProperties["Patient Uuid"];
+        detailsMap[detail.Id].hiddenAttributes.visitUuid = hiddenProperties["Visit Uuid"];
+    });
 
-                    var destinationBlockDetails = {
-                        displayName: providerName + ", " + operationTheatre + " (" + blockStartTime + " - " + blockEndTime + ")",
-                        uuid: surgicalBlock.uuid,
-                        surgicalAppointment: {sortWeight: validAppointments.length}
-                    };
-                    return destinationBlockDetails;
-                });
-            });
-        };
-
-        $scope.cancel = function () {
-            ngDialog.close();
-        };
-
-        var updateSortWeightOfSurgicalAppointments = function () {
-            var surgicalBlock = _.cloneDeep($scope.sourceSurgicalBlock);
-            var surgicalAppointments = _.filter(surgicalBlock.surgicalAppointments, function (appointment) {
-                return appointment.uuid !== $scope.ngDialogData.surgicalAppointment.uuid && appointment.status !== 'POSTPONED' && appointment.status !== 'CANCELLED';
-            });
-            surgicalBlock.surgicalAppointments = _.map(surgicalAppointments, function (appointment, index) {
-                appointment.sortWeight = index;
-                return appointment;
-            });
-            surgicalBlock.provider = {uuid: surgicalBlock.provider.uuid};
-            surgicalBlock.location = {uuid: surgicalBlock.location.uuid};
-            surgicalBlock.surgicalAppointments = _.map(surgicalBlock.surgicalAppointments, function (appointment) {
-                appointment.patient = {uuid: appointment.patient.uuid};
-                appointment.surgicalAppointmentAttributes = _.values(appointment.surgicalAppointmentAttributes).filter(function (attribute) {
-                    return !_.isUndefined(attribute.value);
-                });
-                return _.omit(appointment, ['derivedAttributes', 'surgicalBlock', 'bedNumber', 'bedLocation']);
-            });
-
-            return surgicalAppointmentService.updateSurgicalBlock(surgicalBlock);
-        };
-
-        $scope.moveSurgicalAppointment = function () {
-            var surgicalAppointment = {
-                uuid: $scope.surgicalAppointment.uuid,
-                patient: {uuid: $scope.surgicalAppointment.patient.uuid},
-                sortWeight: $scope.destinationBlock.surgicalAppointment.sortWeight,
-                surgicalBlock: {uuid: $scope.destinationBlock.uuid}
-            };
-            surgicalAppointmentService.updateSurgicalAppointment(surgicalAppointment).then(function () {
-                updateSortWeightOfSurgicalAppointments().then(function () {
-                    messagingService.showMessage('info', "Surgical Appointment moved to the block " + $scope.destinationBlock.displayName + " Successfully");
-                    ngDialog.close();
-                    $state.go("otScheduling", {viewDate: $scope.dateForMovingSurgery}, {reload: true});
-                });
-            });
-        };
-
-        init();
-    }]);
+    return removeDuplicateRuledOutDiagnosis(_.values(detailsMap));
+};
 
 'use strict';
 
-angular.module('bahmni.ot')
-    .directive('otCalendar', [function () {
+angular.module('bahmni.adt')
+    .directive('wardList', [function () {
         return {
             restrict: 'E',
-            controller: "otCalendarController",
+            controller: 'WardListController',
             scope: {
-                viewDate: "=",
-                dayViewStart: "=",
-                dayViewEnd: "=",
-                dayViewSplit: "=",
-                filterParams: "="
+                ward: "="
             },
-            templateUrl: "../ot/views/otCalendar.html"
+            templateUrl: "../adt/views/wardList.html"
         };
     }]);
 
 'use strict';
 
-angular.module('bahmni.ot')
-    .directive('otCalendarSurgicalBlock', ['surgicalAppointmentHelper', function (surgicalAppointmentHelper) {
-        var link = function ($scope) {
-            var gridCellHeight = 120;
-            var heightForSurgeonName = 21;
-            var surgicalBlockHeightPerMin = gridCellHeight / $scope.dayViewSplit;
-
-            var getViewPropertiesForSurgicalBlock = function () {
-                var surgicalBlockHeight = getHeightForSurgicalBlock();
-                $scope.blockDimensions = {
-                    height: surgicalBlockHeight,
-                    top: getTopForSurgicalBlock(),
-                    color: getColorForProvider(),
-                    appointmentHeightPerMin: (surgicalBlockHeight - heightForSurgeonName) / Bahmni.Common.Util.DateUtil.diffInMinutes(
-                        $scope.surgicalBlock.startDatetime, $scope.surgicalBlock.endDatetime)
-                };
-            };
-
-            var getColorForProvider = function () {
-                var otCalendarColorAttribute = _.find($scope.surgicalBlock.provider.attributes, function (attribute) {
-                    return attribute.attributeType.display === 'otCalendarColor';
-                });
-
-                var hue = otCalendarColorAttribute ? otCalendarColorAttribute.value.toString() : "0";
-                var backgroundColor = "hsl(" + hue + ", 100%, 90%)";
-                var borderColor = "hsl(" + hue + ",100%, 60%)";
-                return {
-                    backgroundColor: backgroundColor,
-                    borderColor: borderColor
-                };
-            };
-
-            var getHeightForSurgicalBlock = function () {
-                return Bahmni.Common.Util.DateUtil.diffInMinutes(
-                        $scope.surgicalBlock.startDatetime, $scope.surgicalBlock.endDatetime) * surgicalBlockHeightPerMin;
-            };
-
-            var getTopForSurgicalBlock = function () {
-                return Bahmni.Common.Util.DateUtil.diffInMinutes(
-                        $scope.calendarStartDatetime, $scope.surgicalBlock.startDatetime) * surgicalBlockHeightPerMin;
-            };
-
-            var calculateEstimatedAppointmentDuration = function () {
-                var surgicalAppointments = _.filter($scope.surgicalBlock.surgicalAppointments, function (surgicalAppointment) {
-                    return $scope.isValidSurgicalAppointment(surgicalAppointment);
-                });
-                surgicalAppointments = _.sortBy(surgicalAppointments, ['sortWeight']);
-                var nextAppointmentStartDatetime = moment($scope.surgicalBlock.startDatetime).toDate();
-                $scope.surgicalBlock.surgicalAppointments = _.map(surgicalAppointments, function (surgicalAppointment) {
-                    surgicalAppointment.derivedAttributes = {};
-                    surgicalAppointment.derivedAttributes.duration = surgicalAppointmentHelper.getEstimatedDurationForAppointment(surgicalAppointment);
-                    surgicalAppointment.derivedAttributes.expectedStartDatetime = nextAppointmentStartDatetime;
-                    surgicalAppointment.derivedAttributes.expectedEndDatetime = Bahmni.Common.Util.DateUtil.addMinutes(nextAppointmentStartDatetime,
-                        surgicalAppointment.derivedAttributes.duration);
-                    nextAppointmentStartDatetime = surgicalAppointment.derivedAttributes.expectedEndDatetime;
-                    return surgicalAppointment;
-                });
-            };
-
-            $scope.isValidSurgicalAppointment = function (surgicalAppointment) {
-                return surgicalAppointment.status !== Bahmni.OT.Constants.cancelled && surgicalAppointment.status !== Bahmni.OT.Constants.postponed;
-            };
-
-            $scope.selectSurgicalBlock = function ($event) {
-                $scope.$emit("event:surgicalBlockSelect", $scope.surgicalBlock);
-                $event.stopPropagation();
-            };
-
-            $scope.deselectSurgicalBlock = function ($event) {
-                $scope.$emit("event:surgicalBlockDeselect");
-                $event.stopPropagation();
-            };
-
-            $scope.surgicalBlockExceedsCalendar = function () {
-                return moment($scope.surgicalBlock.endDatetime).toDate() > $scope.calendarEndDatetime;
-            };
-
-            getViewPropertiesForSurgicalBlock();
-            calculateEstimatedAppointmentDuration();
-        };
-        return {
-            restrict: 'E',
-            link: link,
-            scope: {
-                surgicalBlock: "=",
-                calendarStartDatetime: "=",
-                calendarEndDatetime: "=",
-                dayViewSplit: "=",
-                filterParams: "="
-            },
-            templateUrl: "../ot/views/calendarSurgicalBlock.html"
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .directive('otCalendarSurgicalAppointment', ['surgicalAppointmentHelper', function (surgicalAppointmentHelper) {
-        var link = function ($scope) {
-            $scope.attributes = _.reduce($scope.surgicalAppointment.surgicalAppointmentAttributes, function (attributes, attribute) {
-                attributes[attribute.surgicalAppointmentAttributeType.name] = attribute.value;
-                return attributes;
-            }, {});
-
-            var hasAppointmentStatusInFilteredStatusList = function () {
-                if (_.isEmpty($scope.filterParams.statusList)) {
-                    return true;
-                }
-                return _.find($scope.filterParams.statusList, function (selectedStatus) {
-                    return selectedStatus.name === $scope.surgicalAppointment.status;
-                });
-            };
-
-            var hasAppointmentIsOfTheFilteredPatient = function () {
-                if (_.isEmpty($scope.filterParams.patient)) {
-                    return true;
-                }
-                return $scope.surgicalAppointment.patient.uuid === $scope.filterParams.patient.uuid;
-            };
-
-            $scope.canTheSurgicalAppointmentBeShown = function () {
-                return hasAppointmentIsOfTheFilteredPatient() && hasAppointmentStatusInFilteredStatusList();
-            };
-
-            var getDataForSurgicalAppointment = function () {
-                $scope.height = getHeightForSurgicalAppointment();
-                $scope.patient = surgicalAppointmentHelper.getPatientDisplayLabel($scope.surgicalAppointment.patient.display);
-            };
-
-            var getHeightForSurgicalAppointment = function () {
-                return $scope.surgicalAppointment.derivedAttributes.duration * $scope.heightPerMin;
-            };
-
-            $scope.selectSurgicalAppointment = function ($event) {
-                $scope.$emit("event:surgicalAppointmentSelect", $scope.surgicalAppointment, $scope.$parent.surgicalBlock);
-                $event.stopPropagation();
-            };
-            getDataForSurgicalAppointment();
-
-            $scope.deselectSurgicalAppointment = function ($event) {
-                $scope.$emit("event:surgicalBlockDeselect");
-                $event.stopPropagation();
-            };
-        };
-        return {
-            restrict: 'E',
-            link: link,
-            scope: {
-                surgicalAppointment: "=",
-                heightPerMin: "=",
-                backgroundColor: "=",
-                filterParams: "="
-
-            },
-            templateUrl: "../ot/views/calendarSurgicalAppointment.html"
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .directive('multiSelectAutocomplete', [function () {
+angular.module('bahmni.adt')
+    .directive('adtPatientSearch', ['$timeout', function ($timeout) {
         var link = function ($scope, element) {
-            $scope.focusOnTheTest = function () {
-                var autoselectInput = $("input.input");
-                autoselectInput[0].focus();
-            };
-            $scope.addItem = function (item) {
-                item[item.name] = true;
-                $scope.selectedValues = _.union($scope.selectedValues, item, $scope.keyProperty);
-            };
-
-            $scope.removeItem = function (item) {
-                $scope.selectedValues = _.filter($scope.selectedValues, function (value) {
-                    return value[$scope.keyProperty] !== item[$scope.keyProperty];
-                });
-            };
-
-            $scope.search = function (query) {
-                var matchingAnswers = [];
-                var unselectedValues = _.xorBy($scope.inputItems, $scope.selectedValues, $scope.keyProperty);
-                _.forEach(unselectedValues, function (answer) {
-                    if (typeof answer.name != "object" && answer.name.toLowerCase().indexOf(query.toLowerCase()) !== -1) {
-                        matchingAnswers.push(answer);
-                    }
-                });
-                return _.uniqBy(matchingAnswers, $scope.keyProperty);
-            };
+            $timeout(function () {
+                element.find('.tabs ul').prepend($('.ward-list-tab'));
+                element.find('.tab-content').prepend($('#ward-list'));
+                if ($scope.isBedManagementEnabled && !$scope.search.navigated) {
+                    $scope.search.searchType = undefined;
+                }
+            });
         };
+
         return {
             restrict: 'E',
+            controller: 'PatientsListController',
             link: link,
-            scope: {
-                inputItems: "=",
-                selectedValues: "=",
-                displayProperty: "=",
-                keyProperty: "=",
-                placeholder: "=",
-                loadOnDownArrow: "=",
-                autoCompleteMinLength: "="
-            },
-            templateUrl: "../ot/views/multiSelectAutocomplete.html"
+            templateUrl: '../common/patient-search/views/patientsList.html'
         };
     }]);
 
 'use strict';
 
-angular.module('bahmni.ot')
-    .directive('stringToNumber', function () {
+angular.module('bahmni.adt')
+    .directive('ward', [function () {
         return {
-            require: 'ngModel',
-            link: function (scope, elem, attrs, ngModel) {
-                if (attrs.type === 'number') {
-                    ngModel.$formatters.push(function (value) {
-                        return parseFloat(value);
-                    });
-                }
+            restrict: 'E',
+            controller: "WardController",
+            scope: {
+                ward: "=",
+                readOnly: "=",
+                encounterUuid: "=",
+                patientUuid: "=",
+                visitUuid: "="
+            },
+            templateUrl: "../adt/views/ward.html"
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.adt')
+    .directive('wardLayout', [ function () {
+        return {
+            restrict: 'E',
+            controller: "WardLayoutController",
+            scope: {
+                ward: "=",
+                readOnly: "=",
+                encounterUuid: "=",
+                patientUuid: "=",
+                visitUuid: "="
+            },
+            templateUrl: "../adt/views/wardLayout.html"
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.adt')
+    .directive('bedAssignmentDialog', function () {
+        return {
+            restrict: 'A',
+            link: function (scope, elem) {
+                elem.bind('click', function (e) {
+                    scope.setBedDetails(scope.cell);
+                    var leftPos = $(elem).offset().left - 132;
+                    var topPos = $(elem).offset().top;
+                    var bedInfoElem = $(elem).closest('.ward').find(".bed-info");
+                    bedInfoElem.css('left', leftPos);
+                    bedInfoElem.css('top', topPos);
+                    e.stopPropagation();
+                });
             }
         };
     });
 
 'use strict';
 
-angular.module('bahmni.ot')
-    .directive('listView', [function () {
-        return {
-            restrict: 'E',
-            controller: "listViewController",
-            scope: {
-                viewDate: "=",
-                filterParams: "=",
-                weekStartDate: "=",
-                weekEndDate: "=",
-                weekOrDay: "="
-            },
-            templateUrl: "../ot/views/listView.html"
-        };
-    }]);
-
-'use strict';
-
-angular.module("bahmni.ot")
-    .directive("onScroll", [function () {
-        var link = function ($scope, $element, attrs) {
-            $element.bind('scroll', function (evt) {
-                // Please dont remove or alter the below class name
-                $('.calendar-location').css("top", $element.scrollTop());
-                $('.calendar-time-container').css("left", $element.scrollLeft());
-            });
-        };
-        return {
-            restrict: "A",
-            link: link
-        };
-    }]);
-
-'use strict';
-
-Bahmni.OT.SurgicalBlockMapper = function () {
-    var mapSelectedOtherSurgeon = function (otherSurgeonAttribute, surgeonList) {
-        var selectedOtherSurgeon = _.filter(surgeonList, function (surgeon) {
-            return surgeon.id === parseInt(otherSurgeonAttribute.value);
-        });
-        otherSurgeonAttribute.value = _.isEmpty(selectedOtherSurgeon) ? null : selectedOtherSurgeon[0];
-    };
-
-    var mapOpenMrsSurgicalAppointmentAttributes = function (openMrsSurgicalAppointmentAttributes, surgeonsList) {
-        var mappedAttributes = {};
-        _.each(openMrsSurgicalAppointmentAttributes, function (attribute) {
-            var attributeName = attribute.surgicalAppointmentAttributeType.name;
-            mappedAttributes[attributeName] = {
-                id: attribute.id,
-                uuid: attribute.uuid,
-                value: attribute.value,
-                surgicalAppointmentAttributeType: {
-                    uuid: attribute.surgicalAppointmentAttributeType.uuid,
-                    name: attribute.surgicalAppointmentAttributeType.name
-                }
-            };
-        });
-        var otherSurgeonnAttribute = mappedAttributes['otherSurgeon'];
-        if (otherSurgeonnAttribute) {
-            mapSelectedOtherSurgeon(otherSurgeonnAttribute, surgeonsList);
-        }
-        return mappedAttributes;
-    };
-
-    var mapSurgicalAppointment = function (openMrsSurgicalAppointment, attributeTypes, surgeonsList) {
-        var surgicalAppointmentAttributes = mapOpenMrsSurgicalAppointmentAttributes(openMrsSurgicalAppointment.surgicalAppointmentAttributes, surgeonsList);
-        return {
-            id: openMrsSurgicalAppointment.id,
-            uuid: openMrsSurgicalAppointment.uuid,
-            voided: openMrsSurgicalAppointment.voided || false,
-            patient: openMrsSurgicalAppointment.patient,
-            sortWeight: openMrsSurgicalAppointment.sortWeight,
-            actualStartDatetime: Bahmni.Common.Util.DateUtil.parseServerDateToDate(openMrsSurgicalAppointment.actualStartDatetime),
-            actualEndDatetime: Bahmni.Common.Util.DateUtil.parseServerDateToDate(openMrsSurgicalAppointment.actualEndDatetime),
-            notes: openMrsSurgicalAppointment.notes,
-            status: openMrsSurgicalAppointment.status,
-            bedLocation: (openMrsSurgicalAppointment.bedLocation || ""),
-            bedNumber: (openMrsSurgicalAppointment.bedNumber || ""),
-            surgicalAppointmentAttributes: new Bahmni.OT.SurgicalBlockMapper().mapAttributes(surgicalAppointmentAttributes, attributeTypes)
-        };
-    };
-
-    this.map = function (openMrsSurgicalBlock, attributeTypes, surgeonsList) {
-        var surgicalAppointments = _.map(openMrsSurgicalBlock.surgicalAppointments, function (surgicalAppointment) {
-            return mapSurgicalAppointment(surgicalAppointment, attributeTypes, surgeonsList);
-        });
-        return {
-            id: openMrsSurgicalBlock.id,
-            uuid: openMrsSurgicalBlock.uuid,
-            voided: openMrsSurgicalBlock.voided || false,
-            startDatetime: Bahmni.Common.Util.DateUtil.parseServerDateToDate(openMrsSurgicalBlock.startDatetime),
-            endDatetime: Bahmni.Common.Util.DateUtil.parseServerDateToDate(openMrsSurgicalBlock.endDatetime),
-            provider: openMrsSurgicalBlock.provider,
-            location: openMrsSurgicalBlock.location,
-            surgicalAppointments: _.sortBy(surgicalAppointments, 'sortWeight')
-        };
-    };
-
-    var mapSurgicalAppointmentAttributesUIToDomain = function (appointmentAttributes) {
-        var attributes = _.cloneDeep(appointmentAttributes);
-        var otherSurgeon = attributes['otherSurgeon'];
-        otherSurgeon.value = otherSurgeon.value && otherSurgeon.value.id;
-        return _.values(attributes).filter(function (attribute) {
-            return !_.isUndefined(attribute.value);
-        }).map(function (attribute) {
-            attribute.value = !_.isNull(attribute.value) && attribute.value.toString() || "";
-            return attribute;
-        });
-    };
-
-    var mapSurgicalAppointmentUIToDomain = function (surgicalAppointmentUI) {
-        return {
-            id: surgicalAppointmentUI.id,
-            uuid: surgicalAppointmentUI.uuid,
-            voided: surgicalAppointmentUI.voided || false,
-            patient: {uuid: surgicalAppointmentUI.patient.uuid},
-            actualStartDatetime: surgicalAppointmentUI.actualStartDatetime,
-            actualEndDatetime: surgicalAppointmentUI.actualEndDatetime,
-            sortWeight: surgicalAppointmentUI.sortWeight,
-            notes: surgicalAppointmentUI.notes,
-            status: surgicalAppointmentUI.status,
-            surgicalAppointmentAttributes: mapSurgicalAppointmentAttributesUIToDomain(surgicalAppointmentUI.surgicalAppointmentAttributes)
-        };
-    };
-
-    this.mapSurgicalBlockUIToDomain = function (surgicalBlockUI) {
-        return {
-            id: surgicalBlockUI.id,
-            uuid: surgicalBlockUI.uuid,
-            voided: surgicalBlockUI.voided || false,
-            startDatetime: surgicalBlockUI.startDatetime,
-            endDatetime: surgicalBlockUI.endDatetime,
-            provider: {uuid: surgicalBlockUI.provider.uuid},
-            location: {uuid: surgicalBlockUI.location.uuid},
-            surgicalAppointments: _.map(surgicalBlockUI.surgicalAppointments, function (surgicalAppointment) {
-                return mapSurgicalAppointmentUIToDomain(surgicalAppointment);
-            })
-        };
-    };
-
-    var getAttributeTypeByName = function (attributeTypes, name) {
-        return _.find(attributeTypes, function (attributeType) {
-            return attributeType.name === name;
-        });
-    };
-
-    this.mapAttributes = function (attributes, attributeTypes) {
-        _.each(attributeTypes, function (attributeType) {
-            var existingAttribute = attributes[attributeType.name];
-            if (!existingAttribute) {
-                attributes[attributeType.name] = {
-                    surgicalAppointmentAttributeType: getAttributeTypeByName(attributeTypes, attributeType.name)
-                };
-                if (attributeType.name === "cleaningTime") {
-                    attributes[attributeType.name].value = 15;
-                } else if (attributeType.name === "estTimeMinutes") {
-                    attributes[attributeType.name].value = 0;
-                } else if (attributeType.name === "estTimeHours") {
-                    attributes[attributeType.name].value = 0;
-                } else {
-                    attributes[attributeType.name].value = "";
-                }
-            }
-        });
-        return attributes;
-    };
-};
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .filter('surgicalBlock', [function () {
-        var filterByLocation = function (surgicalBlocks, filters) {
-            var blocksFilteredByLocation = [];
-            _.forEach(surgicalBlocks, function (block) {
-                filters.locations[block.location.name] ? blocksFilteredByLocation.push(block) : '';
-            });
-            return blocksFilteredByLocation;
-        };
-
-        var filterByProvider = function (blocksFilteredByLocation, filters) {
-            if (_.isEmpty(filters.providers)) {
-                return blocksFilteredByLocation;
-            }
-            var blocksFilteredByProvider = _.filter(blocksFilteredByLocation, function (block) {
-                return _.find(filters.providers, function (provider) {
-                    return provider.uuid === block.provider.uuid;
-                });
-            });
-            return blocksFilteredByProvider;
-        };
-
-        var filterByPatientUuid = function (blocksFilteredByProviders, filters) {
-            if (_.isEmpty(filters.patient)) {
-                return blocksFilteredByProviders;
-            }
-            return _.filter(blocksFilteredByProviders, function (block) {
-                return _.find(block.surgicalAppointments, function (appointment) {
-                    return appointment.patient.uuid === filters.patient.uuid;
-                });
-            });
-        };
-
-        var filterByAppointmentStatus = function (blocksFilteredByPatient, filters) {
-            if (_.isEmpty(filters.statusList)) {
-                return blocksFilteredByPatient;
-            }
-            return _.filter(blocksFilteredByPatient, function (block) {
-                return _.find(block.surgicalAppointments, function (appointment) {
-                    return _.find(filters.statusList, function (status) {
-                        return status.name === appointment.status;
-                    });
-                });
-            });
-        };
-
-        var filterByPatientAndStatus = function (blocksFilteredByProviders, filters) {
-            if (_.isEmpty(filters.statusList) || _.isEmpty(filters.patient)) {
-                var blocksFilteredByPatient = filterByPatientUuid(blocksFilteredByProviders, filters);
-                return filterByAppointmentStatus(blocksFilteredByPatient, filters);
-            }
-            return _.filter(blocksFilteredByProviders, function (block) {
-                return _.find(block.surgicalAppointments, function (appointment) {
-                    return appointment.patient.uuid === filters.patient.uuid && _.find(filters.statusList, function (status) {
-                        return status.name === appointment.status;
-                    });
-                });
-            });
-        };
-        return function (surgicalBlocks, filters) {
-            if (!filters) {
-                return surgicalBlocks;
-            }
-            var blocksFilteredByLocation = filterByLocation(surgicalBlocks, filters);
-            var blocksFilteredByProviders = filterByProvider(blocksFilteredByLocation, filters);
-            return filterByPatientAndStatus(blocksFilteredByProviders, filters);
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.ot')
-    .service('surgicalAppointmentService', ['$http', function ($http) {
-        this.getSurgeons = function () {
-            return $http.get(Bahmni.Common.Constants.providerUrl, {
+angular.module('bahmni.adt')
+    .service('wardService', ['$http', function ($http) {
+        this.bedsForWard = function (uuid) {
+            return $http.get(Bahmni.ADT.Constants.admissionLocationUrl + uuid, {
                 method: "GET",
-                params: {v: "custom:(id,uuid,person:(uuid,display),attributes:(attributeType:(display),value))"},
+                params: {v: "full"},
                 withCredentials: true
             });
         };
 
-        this.saveSurgicalBlock = function (data) {
-            return $http.post(Bahmni.OT.Constants.addSurgicalBlockUrl, data, {
-                params: {v: "full"},
-                withCredentials: true,
-                headers: {"Accept": "application/json", "Content-Type": "application/json"}
-            });
-        };
-
-        this.updateSurgicalBlock = function (data) {
-            return $http.post(Bahmni.OT.Constants.addSurgicalBlockUrl + '/' + data.uuid, data, {
-                params: {v: "full"},
-                withCredentials: true,
-                headers: {"Accept": "application/json", "Content-Type": "application/json"}
-            });
-        };
-
-        this.updateSurgicalAppointment = function (data) {
-            return $http.post(Bahmni.OT.Constants.updateSurgicalAppointmentUrl + "/" + data.uuid, data, {
-                params: {v: "full"},
-                withCredentials: true,
-                headers: {"Accept": "application/json", "Content-Type": "application/json"}
-            });
-        };
-
-        this.getSurgicalAppointmentAttributeTypes = function () {
-            return $http.get(Bahmni.OT.Constants.surgicalAppointmentAttributeTypeUrl, {
-                method: "GET",
-                params: {v: "custom:(uuid,name)"},
-                withCredentials: true
-            });
-        };
-
-        this.getSurgicalBlockFor = function (surgicalBlockUuid) {
-            return $http.get(Bahmni.OT.Constants.addSurgicalBlockUrl + "/" + surgicalBlockUuid, {
-                params: {v: "full"},
-                withCredentials: true,
-                headers: {"Accept": "application/json", "Content-Type": "application/json"}
-            });
-        };
-
-        this.getSurgicalBlocksInDateRange = function (startDatetime, endDatetime, includeVoided) {
-            return $http.get(Bahmni.OT.Constants.addSurgicalBlockUrl, {
-                method: "GET",
-                params: {
-                    startDatetime: Bahmni.Common.Util.DateUtil.parseLongDateToServerFormat(startDatetime),
-                    endDatetime: Bahmni.Common.Util.DateUtil.parseLongDateToServerFormat(endDatetime),
-                    includeVoided: includeVoided || false,
-                    v: "custom:(id,uuid," +
-                    "provider:(uuid,person:(uuid,display),attributes:(attributeType:(display),value,voided))," +
-                    "location:(uuid,name),startDatetime,endDatetime,surgicalAppointments:(id,uuid,patient:(uuid,display,person:(age))," +
-                    "actualStartDatetime,actualEndDatetime,status,notes,sortWeight,bedNumber,bedLocation,surgicalAppointmentAttributes))"
-                },
-                withCredentials: true
-            });
+        this.getWardsList = function () {
+            return $http.get(Bahmni.ADT.Constants.admissionLocationUrl);
         };
     }]);
 
 'use strict';
 
-angular.module('bahmni.ot')
+angular.module('bahmni.adt')
     .service('queryService', ['$http', function ($http) {
         this.getResponseFromQuery = function (params) {
             return $http.get(Bahmni.Common.Constants.sqlUrl, {
@@ -11870,5 +10368,71 @@ angular.module('bahmni.ot')
                 params: params,
                 withCredentials: true
             });
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.adt')
+    .service('bedManagementService', [function () {
+        var maxX = 1;
+        var maxY = 1;
+        var minX = 1;
+        var minY = 1;
+
+        this.createLayoutGrid = function (bedLayouts) {
+            self.layout = [];
+            findMaxYMaxX(bedLayouts);
+            var bedLayout;
+            var rowLayout = [];
+            for (var i = minX; i <= maxX; i++) {
+                rowLayout = [];
+                for (var j = minY; j <= maxY; j++) {
+                    bedLayout = getBedLayoutWithCoordinates(i, j, bedLayouts);
+                    rowLayout.push({
+                        empty: isEmpty(bedLayout),
+                        available: isAvailable(bedLayout),
+                        bed: {
+                            bedId: bedLayout !== null && bedLayout.bedId,
+                            bedNumber: bedLayout !== null && bedLayout.bedNumber,
+                            bedType: bedLayout !== null && bedLayout.bedType !== null && bedLayout.bedType.displayName
+                        }
+                    });
+                }
+                self.layout.push(rowLayout);
+            }
+            return self.layout;
+        };
+
+        var findMaxYMaxX = function (bedLayouts) {
+            for (var i = 0; i < bedLayouts.length; i++) {
+                var bedLayout = bedLayouts[i];
+                if (bedLayout.rowNumber > maxX) {
+                    maxX = bedLayout.rowNumber;
+                }
+                if (bedLayout.columnNumber > maxY) {
+                    maxY = bedLayout.columnNumber;
+                }
+            }
+        };
+
+        var getBedLayoutWithCoordinates = function (rowNumber, columnNumber, bedLayouts) {
+            for (var i = 0, len = bedLayouts.length; i < len; i++) {
+                if (bedLayouts[i].rowNumber === rowNumber && bedLayouts[i].columnNumber === columnNumber) {
+                    return bedLayouts[i];
+                }
+            }
+            return null;
+        };
+
+        var isEmpty = function (bedLayout) {
+            return bedLayout === null || bedLayout.bedId === null;
+        };
+
+        var isAvailable = function (bedLayout) {
+            if (bedLayout === null) {
+                return false;
+            }
+            return bedLayout.status === "AVAILABLE";
         };
     }]);

@@ -3263,6 +3263,7 @@ angular.module('bahmni.common.conceptSet')
                 };
 
                 //helper function - perfoms the autofilling - Pheko - Phenduka
+                //helper function - perfoms the autofilling - Pheko - Phenduka
                 var fillingformValuesOnPreviousEncouter = function(flattenedObs,fields)
                 {   
                     flattenedObs.forEach(function (obs) {
@@ -3305,27 +3306,19 @@ angular.module('bahmni.common.conceptSet')
 
                                                                                     obs.value = response.data[0].value;
 
-                                                                                    if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                            obs.disabled = true;
-                                                                                    $scope.AutoFilledFields.push(obs.concept.name);
+                                                                                    $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                                 }
                                                                             }
                                                                             else if(!$rootScope.retrospectiveEntry){
                                                                                 obs.value = response.data[0].value;
                                                                                 
-                                                                                if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                     obs.disabled = true;
-                                                                                
-                                                                                $scope.AutoFilledFields.push(obs.concept.name);
+                                                                                $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                             }
                                                                         }
                                                                         else if(autofillfield.fieldValue.enableDefaultValue){
                                                                             obs.value = response.data[0].value;
-                                                                            
-                                                                            if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                obs.disabled = true;
 
-                                                                            $scope.AutoFilledFields.push(obs.concept.name);
+                                                                            $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                         }
                                                                 });
                                                             }
@@ -3343,19 +3336,14 @@ angular.module('bahmni.common.conceptSet')
     
                                                         if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                             obs.value = response.data[0].value; 
-                                                            if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                obs.disabled = true;
 
-                                                            $scope.AutoFilledFields.push(obs.concept.name);
+                                                            $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                         }
                                                     }
                                                     else if(!$rootScope.retrospectiveEntry){
                                                         obs.value = response.data[0].value;
-
-                                                        if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                            obs.disabled = true;
                                                         
-                                                        $scope.AutoFilledFields.push(obs.concept.name);
+                                                        $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                     }
                                                 }
                                             }
@@ -3369,20 +3357,14 @@ angular.module('bahmni.common.conceptSet')
 
                                                     if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                         obs.value = response.data[0].value;
-
-                                                        if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                            obs.disabled = true;
                                                         
-                                                        $scope.AutoFilledFields.push(obs.concept.name);
+                                                        $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                     }
                                                 }
                                                 else if(!$rootScope.retrospectiveEntry){
                                                     obs.value = response.data[0].value;
                                                     
-                                                    if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                        obs.disabled = true;
-                                                    
-                                                    $scope.AutoFilledFields.push(obs.concept.name);
+                                                    $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                 }
                                             }
                                         }
@@ -3428,18 +3410,14 @@ angular.module('bahmni.common.conceptSet')
                                                                                     
                                                                                     if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                                                         obs.value = Answer;
-                                                                              
-                                                                                        if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                            obs.disabled = true;
-                                                                                        $scope.AutoFilledFields.push(obs.concept.name);
+
+                                                                                        $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                                     }
                                                                                 }
                                                                                 else if(!$rootScope.retrospectiveEntry){
                                                                                     obs.value = Answer;
-                                                                                    if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                        obs.disabled = true;
                                                                                     
-                                                                                    $scope.AutoFilledFields.push(obs.concept.name);
+                                                                                    $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                                 }
                                                                             }
                                                                         }
@@ -3447,11 +3425,8 @@ angular.module('bahmni.common.conceptSet')
                                                                             Answer = answer;
                                                                            
                                                                             obs.value = Answer;
-                                                                            
-                                                                            if(response.data[0].value && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                                obs.disabled = true;
 
-                                                                            $scope.AutoFilledFields.push(obs.concept.name);
+                                                                            $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                         }
                                                                     });
                                                                 }
@@ -3470,20 +3445,14 @@ angular.module('bahmni.common.conceptSet')
 
                                                             if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                                 obs.value = Answer;
-                                                                
-                                                                if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                    obs.disabled = true;
-                                                                $scope.AutoFilledFields.push(obs.concept.name);
+                                                            
+                                                                $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                             }
                                                         }
                                                         else if(!$rootScope.retrospectiveEntry){
                                                             obs.value = Answer;
-                                                            
-                                                            
-                                                            if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                obs.disabled = true;
 
-                                                            $scope.AutoFilledFields.push(obs.concept.name);
+                                                            $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                         }
                                                     }
                                                 
@@ -3498,19 +3467,13 @@ angular.module('bahmni.common.conceptSet')
                                                                 
                                                                 if(autofillfield.fieldValue.isFilledOnRetrospectiveMode){
                                                                     obs.value = Answer;
-                                                                    
-                                                                    if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                        obs.disabled = true;
-                                                                    $scope.AutoFilledFields.push(obs.concept.name);
+                                                                    $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                                 }
                                                             }
                                                             else if(!$rootScope.retrospectiveEntry){
                                                                 obs.value = Answer;
                                                               
-                                                                
-                                                                if(Answer && !autofillfield.fieldValue.enableEditAfterAutoFill)
-                                                                    obs.disabled = true;
-                                                                $scope.AutoFilledFields.push(obs.concept.name);
+                                                                $scope.AutoFilledFields.push({conceptName : obs.concept.name, enableEdit: autofillfield.fieldValue.enableEditAfterAutoFill});
                                                             }
                                                         }
                                                     
@@ -3530,7 +3493,7 @@ angular.module('bahmni.common.conceptSet')
                     if(!_.isEmpty($scope.AutoFilledFields))
                     $scope.AutoFilledFields.forEach((__autofield)=>{
                         fields.forEach((__field)=>{
-                            if(__field.field == __autofield){
+                            if(__field.field == __autofield.conceptName){
                                 return;
                             }
                         });
@@ -3942,9 +3905,11 @@ angular.module('bahmni.common.conceptSet')
                                 $scope.observations.forEach((obs)=>{
                                     if(obs.label === "Nutritional Values")
                                         obs.groupMembers.forEach(member =>{
+                                            member.parentForm = "Nutritional Values";
                                             if(member.label === "WEIGHT"){
-                                                if(patientAge < 15)
-                                                    member.conceptUIConfig.required = true;
+                                                if(patientAge < 15){
+                                                    member.conceptUIConfig.required = member.isChecked ? false : true;
+                                                }
                                             }
                                             if(member.label === "HEIGHT"){
                                                 $scope.AutopopulateHeight = patientAge >= 18 ? true : false;
@@ -4143,6 +4108,10 @@ angular.module('bahmni.common.conceptSet')
                     lastObservationByLabel.showAddMoreButton = function () { return true; };
                     observation.hidden = true;
                 };
+
+                scope.isNotMandadory = function(observation){
+                    console.log(observation)
+                }
 
                 scope.isClone = function (observation, parentObservation) {
                     if (parentObservation && parentObservation.groupMembers) {
