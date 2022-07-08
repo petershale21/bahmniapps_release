@@ -29,13 +29,15 @@
       <tbody>
         <tr ng-repeat="appointment in filteredAppointments" ng-click="select(appointment)" ng-style="{'background-color': colorsForListView[appointment.status]}" ng-class="{'selected' : isSelected(appointment)}">
           <td>{{::appointment.patient.hivIdentifier}}</td>
+          <td>{{::appointment.fileNumber}}</td>
           <td class="table-mid-width">
             {{::appointment.patient.name | titleCase}}
           </td>
-          <!-- Adding Age and Sex -->
+          <!-- Adding Age, Sex and Contacts -->
           <td>{{::appointment.age}}</td>
           <td>{{::appointment.gender}}</td>
-          <td>{{::appointment.endDateTime | bahmniTime}}</td>
+          <td>{{::appointment.contacts}}</td>
+          <td>{{::appointment.village}}</td>
           <td class="table-mid-width">{{::appointment.provider.name}}</td>
           <td ng-show="::enableSpecialities">
             {{::appointment.service.speciality.name}}

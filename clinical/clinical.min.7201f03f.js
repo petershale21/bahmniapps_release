@@ -6600,14 +6600,14 @@ angular.module('bahmni.common.conceptSet')
                                                      if(element.groupMembers[4].value != undefined){
                                                          edd=element.groupMembers[4].value;
                                                          var dt = new Date(edd);
-                                                         dt.setMonth( dt.getMonth() + 9);
-                                                         var day= '' + dt.getDate();
+                                                         dt.setDate( dt.getDate() + 280);   //add 280 days to get EDD from LNMP
+                                                         var day= '' + dt.getDate();           
                                                          var month='' + (dt.getMonth()+1);
                                                          var year='' + dt.getFullYear();
-                                                         if (month.length < 2) {
+                                                         if (month.length < 2) {            //insert a zero to precede months with a single digit
                                                             month = '0' + month;
                                                          }
-                                                         if (day.length < 2){
+                                                         if (day.length < 2){               //insert a zero to precede days with a single digit
                                                             day = '0' + day;
                                                          }
                                                         
@@ -6621,6 +6621,25 @@ angular.module('bahmni.common.conceptSet')
                                     }
                                  } catch (error) { }
                             });}
+                    //Making Place of Delivery Not Mandatory on ANC Form nkepanem
+                    $scope.$watch(function(){
+                        if($scope.conceptSetName === "ANC, ANC Program"){
+                            
+                            try {
+                                $scope.observations.forEach((obs)=>{
+                                    obs.groupMembers.forEach(member =>{
+                                        if(member.label == 'LOR'){                                            
+                                            member.groupMembers[2].groupMembers[1].conceptUIConfig.required = false;
+                                        }
+                                    })
+                            });
+                            } catch (error) {
+                                
+                            }
+                        }
+
+
+                    })
 
                     // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
                     // Will refactor accordingly
