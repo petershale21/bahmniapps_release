@@ -6628,6 +6628,7 @@ angular.module('bahmni.common.conceptSet')
                             try {
                                 $scope.observations.forEach((obs)=>{
                                     obs.groupMembers.forEach(member =>{
+                                        console.log(member)
                                         if(member.label == 'LOR'){                                            
                                             member.groupMembers[2].groupMembers[1].conceptUIConfig.required = false;
                                         }
@@ -6641,7 +6642,6 @@ angular.module('bahmni.common.conceptSet')
 
                     })
                     //Gestational Age nkepanem
-                    /*
                     $scope.$watch(function(){
                         if($scope.conceptSetName === "ANC, ANC Program"){
                             
@@ -6650,22 +6650,24 @@ angular.module('bahmni.common.conceptSet')
                                     obs.groupMembers.forEach(member =>{
                                         if(member.label == 'LOR'){    
 
-                                           var today = new Date();
-                                           var lastMenstrualDate = new Date(edd)
-                                           var gestationalAge = Math.floor((today - lastMenstrualDate) / (7 * 24 * 60 * 60 * 1000))
-                                           member.groupMembers[0].groupMembers[6].value = gestationalAge
-                                           
+                                            if(edd == null){
+                                                console.log("Do not need LMP since its a subsequent visit")
+                                            }else{
+                                                var today = new Date();
+                                                var lastMenstrualDate = new Date(edd);
+                                                var gestationalAge = Math.floor((today - lastMenstrualDate) / (7 * 24 * 60 * 60 * 1000));
+                                                member.groupMembers[0].groupMembers[6].value = gestationalAge;
+                                            }
                                         }
                                     })
                             });
                             } catch (error) {
-                                console.log("Crash and Burn")
+                                
                             }
                         }
 
 
-                    }) 
-                    */
+                    })
 
                     // TODO : Hack to include functionality for pre-populating ART Regimens - Teboho
                     // Will refactor accordingly
