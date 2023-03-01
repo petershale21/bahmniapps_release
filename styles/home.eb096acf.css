@@ -10577,6 +10577,12 @@ button.button-Errorlog {
   color: green;
 }
 
+/* line 767, home/_home.scss */
+#eregisterversion {
+  color: red;
+  font-size: 0.75em;
+}
+
 /* line 2, home/_errorLogs.scss */
 .error-log-wrapper table {
   table-layout: fixed;
