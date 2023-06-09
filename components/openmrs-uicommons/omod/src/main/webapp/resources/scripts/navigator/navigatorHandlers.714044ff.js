@@ -218,7 +218,7 @@ var clickedSectionHandler = function(sections, section, event) {
         for(var i=currentSectionIndex; i<clickedSectionIndex; i++) {
             shouldSelectClickedSection = sections[i].isValid() && shouldSelectClickedSection;
             if (!shouldSelectClickedSection) {
-                if (i > currentSectionIndex) {
+                if ((i >= currentSectionIndex) ) {
                     goToSectionInstead = sections[i];
                 }
                 break;
@@ -241,6 +241,7 @@ var clickedSectionHandler = function(sections, section, event) {
             var goToField = goToQuestion.firstInvalidField() || goToQuestion.fields[0];
             goToQuestion.toggleSelection();
             goToField.toggleSelection();
+            goToField.isValid();
         } else {
             var selectedQuestion = selectedModel(currentSection.questions);
             var selectedField = selectedModel(selectedQuestion.fields);
@@ -273,8 +274,12 @@ var clickedQuestionHandler = function(questions, question, event) {
     var currentQuestionIndex = _.indexOf(questions, currentQuestion);
     var clickedQuestionIndex = _.indexOf(questions, question);
     var shouldSelectClickedQuestion = true;
+    var firstInvalidQuestion = null;
     if(clickedQuestionIndex > currentQuestionIndex) {
         for(var i=currentQuestionIndex; i<clickedQuestionIndex; i++) {
+            if ( !questions[i].isValid() ) {
+              firstInvalidQuestion = questions[i];
+            }
             shouldSelectClickedQuestion = questions[i].isValid() && shouldSelectClickedQuestion;
         }
     }
@@ -283,8 +288,22 @@ var clickedQuestionHandler = function(questions, question, event) {
     shouldSelectClickedQuestion = shouldSelectClickedQuestion && currentQuestion.onExit();
 
     if(!shouldSelectClickedQuestion) {
-        var selectedField = selectedModel(currentQuestion.fields);
-        selectedField && selectedField.select();
+        if ( !currentQuestion.isValid() || !currentQuestion.onExit()) {
+          // stay on the current question if it is invalid
+          var selectedField = selectedModel(currentQuestion.fields);
+          selectedField && selectedField.select();
+        } else if ( firstInvalidQuestion != null ){
+            // navigate forward to the first invalid question
+          currentQuestion.toggleSelection();
+          firstInvalidQuestion.toggleSelection();
+          var goToField = firstInvalidQuestion.firstInvalidField() || firstInvalidQuestion.fields[0];
+          goToField.toggleSelection();
+          goToField.isValid();
+          if(currentQuestion.parentSection != firstInvalidQuestion.parentSection) {
+            currentQuestion.parentSection.toggleSelection();
+            firstInvalidQuestion.parentSection.toggleSelection();
+          }
+        }
     } else {
         currentQuestion.toggleSelection();
         question.toggleSelection();
