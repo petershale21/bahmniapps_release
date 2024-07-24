@@ -8866,13 +8866,53 @@ category: Components - Alerts
   padding: 0 10px !important;
 }
 /* line 43, registration/_registrationSearch.scss */
+.reg-search-wrapper .reg-search .search-seperator-cag {
+  width: 30.5%;
+  margin: 0 1.04167%;
+  float: left;
+}
+@media (max-width: 767px) {
+  /* line 43, registration/_registrationSearch.scss */
+  .reg-search-wrapper .reg-search .search-seperator-cag {
+    display: inline;
+    float: left;
+    width: 97.91667%;
+    margin: 0 1.04167%;
+    border-right: 0;
+    border-bottom: 2px dotted #ccc;
+    display: block;
+    padding-bottom: 10px;
+  }
+}
+/* line 54, registration/_registrationSearch.scss */
+.reg-search-wrapper .reg-search .search-seperator-cag .search-patient-id {
+  width: 100%;
+}
+/* line 56, registration/_registrationSearch.scss */
+.reg-search-wrapper .reg-search .search-seperator-cag .search-patient-id .reg-srch-btn {
+  margin-top: 4px;
+}
+/* line 60, registration/_registrationSearch.scss */
+.reg-search-wrapper .reg-search .search-seperator-cag input[type="text"], .reg-search-wrapper .reg-search .search-seperator-cag form .input-prepend [type="text"].add-on, form .input-prepend .reg-search-wrapper .reg-search .search-seperator-cag [type="text"].add-on, .reg-search-wrapper .reg-search .search-seperator-cag .form .input-prepend [type="text"].add-on, .form .input-prepend .reg-search-wrapper .reg-search .search-seperator-cag [type="text"].add-on {
+  margin-right: 5px;
+  padding: 5px 10px;
+  min-width: 40%;
+}
+/* line 65, registration/_registrationSearch.scss */
+.reg-search-wrapper .reg-search .search-seperator-cag select {
+  width: 80px;
+  min-width: 80px;
+  height: 32px;
+  padding: 0 10px !important;
+}
+/* line 72, registration/_registrationSearch.scss */
 .reg-search-wrapper .reg-search .search-seperator-r {
   width: 67%;
   margin: 0;
   float: left;
 }
 @media (max-width: 767px) {
-  /* line 43, registration/_registrationSearch.scss */
+  /* line 72, registration/_registrationSearch.scss */
   .reg-search-wrapper .reg-search .search-seperator-r {
     display: inline;
     float: left;
@@ -8882,7 +8922,7 @@ category: Components - Alerts
     padding-top: 5px;
   }
 }
-/* line 52, registration/_registrationSearch.scss */
+/* line 81, registration/_registrationSearch.scss */
 .reg-search-wrapper .reg-search .search-seperator-r input[type="text"], .reg-search-wrapper .reg-search .search-seperator-r form .input-prepend [type="text"].add-on, form .input-prepend .reg-search-wrapper .reg-search .search-seperator-r [type="text"].add-on, .reg-search-wrapper .reg-search .search-seperator-r .form .input-prepend [type="text"].add-on, .form .input-prepend .reg-search-wrapper .reg-search .search-seperator-r [type="text"].add-on {
   margin-right: 5px;
   padding: 5px 10px;
@@ -8890,35 +8930,35 @@ category: Components - Alerts
     padding: 5px 10px;
   }*/
 }
-/* line 59, registration/_registrationSearch.scss */
+/* line 88, registration/_registrationSearch.scss */
 .reg-search-wrapper .reg-search .search-seperator-r button {
   margin: 0px 2px 2px 2px;
 }
-/* line 62, registration/_registrationSearch.scss */
+/* line 91, registration/_registrationSearch.scss */
 .reg-search-wrapper .reg-search .search-seperator-r .reg-srch-btn {
   margin-top: 25px;
 }
-/* line 67, registration/_registrationSearch.scss */
+/* line 96, registration/_registrationSearch.scss */
 .reg-search-wrapper .note-container {
   text-align: left;
 }
-/* line 69, registration/_registrationSearch.scss */
+/* line 98, registration/_registrationSearch.scss */
 .reg-search-wrapper .note-container .note {
   padding: 20px 10px 6px 10px;
 }
-/* line 72, registration/_registrationSearch.scss */
+/* line 101, registration/_registrationSearch.scss */
 .reg-search-wrapper .note-container .note .text p {
   max-width: 100%;
   top: 0px;
   margin-left: 0;
 }
 
-/* line 81, registration/_registrationSearch.scss */
+/* line 110, registration/_registrationSearch.scss */
 .sort-pos {
   float: right;
 }
 
-/* line 84, registration/_registrationSearch.scss */
+/* line 113, registration/_registrationSearch.scss */
 .sort-by-asc {
   right: 3px;
   display: inline-block;
@@ -8931,7 +8971,7 @@ category: Components - Alerts
   border-top-width: 0;
 }
 
-/* line 96, registration/_registrationSearch.scss */
+/* line 125, registration/_registrationSearch.scss */
 .sort-by-desc {
   right: 3px;
   display: inline-block;
@@ -8944,52 +8984,52 @@ category: Components - Alerts
   border-bottom-width: 0;
 }
 
-/* line 108, registration/_registrationSearch.scss */
+/* line 137, registration/_registrationSearch.scss */
 .registraition-search-results-container {
   padding: 5px;
   overflow-x: auto;
 }
-/* line 111, registration/_registrationSearch.scss */
+/* line 140, registration/_registrationSearch.scss */
 .registraition-search-results-container table {
   margin-top: 20px;
   font-size: 0.7rem;
 }
-/* line 114, registration/_registrationSearch.scss */
+/* line 143, registration/_registrationSearch.scss */
 .registraition-search-results-container table tr {
   border: none;
 }
-/* line 117, registration/_registrationSearch.scss */
+/* line 146, registration/_registrationSearch.scss */
 .registraition-search-results-container table td, .registraition-search-results-container table th {
   padding: 4px 8px 4px 8px;
   text-align: left;
 }
 @media screen and (max-width: 1024px) {
-  /* line 117, registration/_registrationSearch.scss */
+  /* line 146, registration/_registrationSearch.scss */
   .registraition-search-results-container table td, .registraition-search-results-container table th {
     padding: 9px 8px 9px 8px;
   }
 }
-/* line 124, registration/_registrationSearch.scss */
+/* line 153, registration/_registrationSearch.scss */
 .registraition-search-results-container table tr:hover {
   background: #eee;
 }
-/* line 128, registration/_registrationSearch.scss */
+/* line 157, registration/_registrationSearch.scss */
 .registraition-search-results-container .slno_col {
   width: 40px;
 }
-/* line 131, registration/_registrationSearch.scss */
+/* line 160, registration/_registrationSearch.scss */
 .registraition-search-results-container .edit-col {
   width: 160px;
   padding: 2px 2px 2px 2px;
 }
 @media screen and (min-width: 1024px) {
-  /* line 134, registration/_registrationSearch.scss */
+  /* line 163, registration/_registrationSearch.scss */
   .registraition-search-results-container .edit-col .split-button ul li button {
     padding: 5px 20px;
     margin: 0;
   }
 }
-/* line 140, registration/_registrationSearch.scss */
+/* line 169, registration/_registrationSearch.scss */
 .registraition-search-results-container .edit-col a {
   background: url("edit.png") top left no-repeat;
   width: 30px;
@@ -8998,7 +9038,7 @@ category: Components - Alerts
   margin-right: 2px;
   cursor: pointer;
 }
-/* line 148, registration/_registrationSearch.scss */
+/* line 177, registration/_registrationSearch.scss */
 .registraition-search-results-container .edit-col.visible-small-screen {
   position: absolute;
   top: auto;
@@ -9006,7 +9046,7 @@ category: Components - Alerts
   width: 104px;
   border-bottom: 0;
 }
-/* line 154, registration/_registrationSearch.scss */
+/* line 183, registration/_registrationSearch.scss */
 .registraition-search-results-container .edit-col.visible-small-screen .split-button ul li button {
   margin-right: 0;
   width: 98%;
@@ -9070,7 +9110,7 @@ category: Components - Alerts
 }
 /* line 38, registration/_patientPhoto.scss */
 .capture-photo-btn .camera-btn.btn, .upload-photo-btn .camera-btn.btn {
-  background-image: url('../images/photo.png?1691945090');
+  background-image: url('../images/photo.png?1721034937');
 }
 /* line 41, registration/_patientPhoto.scss */
 .capture-photo-btn .upload-btn.btn, .upload-photo-btn .upload-btn.btn {

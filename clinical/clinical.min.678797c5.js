@@ -479,6 +479,8 @@ Bahmni.Common.AuditLogEventDetails = {
     "EDIT_ENCOUNTER": {eventType: "EDIT_ENCOUNTER", message: "EDIT_ENCOUNTER_MESSAGE"},
 
     "VIEWED_REGISTRATION_PATIENT_SEARCH": {eventType: "VIEWED_REGISTRATION_PATIENT_SEARCH", message: "VIEWED_REGISTRATION_PATIENT_SEARCH_MESSAGE"},
+    "VIEWED_REGISTRATION_CAG_SEARCH": {eventType: "VIEWED_REGISTRATION_CAG_SEARCH", message: "VIEWED_REGISTRATION_CAG_SEARCH_MESSAGE"},
+    "VIEWED_NEW_CAG_PAGE": {eventType: "VIEWED_NEW_CAG_PAGE", message: "VIEWED_NEW_CAG_PAGE"},
     "VIEWED_NEW_PATIENT_PAGE": {eventType: "VIEWED_NEW_PATIENT_PAGE", message: "VIEWED_NEW_PATIENT_PAGE_MESSAGE"},
     "REGISTER_NEW_PATIENT": {eventType: "REGISTER_NEW_PATIENT", message: "REGISTER_NEW_PATIENT_MESSAGE"},
     "EDIT_PATIENT_DETAILS": {eventType: "EDIT_PATIENT_DETAILS", message: "EDIT_PATIENT_DETAILS_MESSAGE"},
@@ -1465,7 +1467,87 @@ angular.module('bahmni.common.appFramework')
                 });
                 return patient;
             };
-           
+           // Getting CAG dat from API - senekanet and shalet
+           this.getCAG = function (uuid) {
+                var cag = $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cag/" + uuid, {
+                method: "GET", 
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+               return cag;
+           };
+           // posting cag appointment to API - senekane
+           this.createAppointment = function (appointment) {
+                var createAppointmentApiUrl = Bahmni.Common.Constants.openmrsUrl+"/ws/rest/v1/appointment";
+                
+                return $http.post(createAppointmentApiUrl, appointment, {
+                    withCredentials: true,
+                    headers: {"Accept": "application/json", "Content-Type": "application/json"}
+                });
+            };
+           // checkinh visit type data from API - senekanet
+           this.getIsCAGVisitType = function (limit) {
+                var cag = $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/visit?limit="+limit, {
+                    method: "GET", 
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    withCredentials: true
+                });
+                return cag;
+            };
+
+           this.getAllCags = function () {
+            return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cag/", {
+                method: "GET",
+                params: {v: "full"},
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+            
+        };
+
+        this.getCagVisit = function (patientUuid) {
+            return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cagVisit?attenderuuid="+patientUuid+'&isactive='+true, {
+                method: "GET",
+                params: {v: "full"},
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+             
+        };
+
+        this.createCagEncounter = function(cagEncounterData){
+            
+            return $http({
+                url: Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cagEncounter/",
+                method: 'POST',
+                params: {v: "full"},
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                data: angular.toJson(cagEncounterData)
+                })
+        }
+
+            this.getCagPatient = function(patientUuid){
+                var cagPatient = $http.get(
+                    Bahmni.Common.Constants.openmrsUrl + '/ws/rest/v1/cagVisit?attenderuuid='+patientUuid+'&isactive='+true,
+                    {
+                        method : "GET",
+                        params: {v: "full"},
+                        withCredentials: true
+                    }
+                );   
+                
+                return cagPatient;
+            }
 
             var loadTemplate = function (appDescriptor) {
                 var deferrable = $q.defer();
@@ -1687,7 +1769,7 @@ angular.module('bahmni.common.appFramework')
 
             // **************Function to be used to set and get flags****************
             let Regimen = '';
-            let isActiveSet = false; 
+            let isActiveSet = false;
             let isDeactivated = false;
             let Followupdate = '';
             let isOderhasBeenSaved = null;
@@ -1756,7 +1838,7 @@ angular.module('bahmni.common.appFramework')
             {
                 return savedFormName ;
             }
-            
+
             this.setIsFieldAutoFilled   = function (_isFieldAutoFilled ){
                 isFieldAutoFilled  = _isFieldAutoFilled ;
             }
@@ -1764,7 +1846,7 @@ angular.module('bahmni.common.appFramework')
             {
                 return isFieldAutoFilled ;
             }
-            
+
             //-------------------------------AHD Meds Flags------------------------------------
             let _AHD_Regimen = '';
             this.set_AHD_Regimen  = function (_ahd_regimen){
@@ -1774,8 +1856,9 @@ angular.module('bahmni.common.appFramework')
             {
                 return _AHD_Regimen;
             }
-            
+
         }]);
+
 'use strict';
 
 angular.module('bahmni.common.appFramework')
@@ -2703,20 +2786,32 @@ angular.module('bahmni.common.patientSearch')
 
 angular.module('bahmni.common.patientSearch')
 .controller('PatientsListController', ['$scope', '$window', 'patientService', '$rootScope', 'appService', 'spinner',
-    '$stateParams', '$bahmniCookieStore', 'printer', 'configurationService',
-    function ($scope, $window, patientService, $rootScope, appService, spinner, $stateParams, $bahmniCookieStore, printer, configurationService) {
+    '$stateParams', '$bahmniCookieStore', 'printer', 'configurationService', '$q',
+    function ($scope, $window, patientService, $rootScope, appService, spinner, $stateParams, $bahmniCookieStore, printer, configurationService, $q) {
         const DEFAULT_FETCH_DELAY = 2000;
         var patientSearchConfig = appService.getAppDescriptor().getConfigValue("patientSearch");
+        console.log(patientSearchConfig);
         var patientListSpinner;
+        $scope.activeVisits = [];
+        $scope.otherCagMemberList=[];
+        $scope.totalqueueLimit=0;
         var initialize = function () {
+            // $scope.cagLoad=1;
             var searchTypes = appService.getAppDescriptor().getExtensions("org.bahmni.patient.search", "config").map(mapExtensionToSearchType);
             $scope.search = new Bahmni.Common.PatientSearch.Search(_.without(searchTypes, undefined));
             $scope.search.markPatientEntry();
             $scope.$watch('search.searchType', function (currentSearchType) {
                 _.isEmpty(currentSearchType) || fetchPatients(currentSearchType);
+                console.log($scope.search.searchTypes);
+                console.log(getPatientCount($scope.search.searchTypes[0], null));
             });
-            $scope.$watch('search.activePatients', function (activePatientsList) {
-                if (activePatientsList.length > 0 && patientListSpinner) {
+            $scope.$watch('search.activePatients', function () {
+                if ($scope.search.activePatients.length > 0 && $scope.search.activePatients[0].activeVisitUuid) {
+                    $scope.totalqueueLimit=$scope.search.searchTypes[0].patientCount;
+                    console.log("active === ", $scope.search.activePatients, "searchtypes ===",$scope.search);
+                    // if($scope.search.activePatients)
+                    $scope.isCagType($scope.totalqueueLimit);
+                    $scope.otherCagMemberList=[];
                     hideSpinner(spinner, patientListSpinner, $(".tab-content"));
                 }
             });
@@ -2736,6 +2831,102 @@ angular.module('bahmni.common.patientSearch')
             });
         };
 
+        $scope.isCagVisit = function(uuid, activePatientsUuid, index){
+            var deferred = $q.defer();
+            appService.getCagPatient(uuid).then(function(response){
+                console.log(response);
+                var res={
+                    "status" : false,
+                    "index" : index,
+                    "cagName":undefined,
+                    "otherMemberList":[]
+                }
+                if(response.data.results.length > 0){
+                    if(response.data.results[response.data.results.length-1].attender.uuid==activePatientsUuid) {
+                        res.status=true;
+                        res.cagName=response.data.results[response.data.results.length-1].cag.name;
+                        res.otherMemberList=response.data.results[response.data.results.length-1].visits;
+                        deferred.resolve(res);
+                    }
+                    else deferred.resolve(res);
+                }
+                else deferred.resolve(res);
+                deferred.resolve();
+            })
+            return deferred.promise;
+        }
+
+        $scope.isCagType = function(limit){
+            showSpinner(spinner, $(".tab-content"));
+            console.log($scope.search);
+            
+            appService.getIsCAGVisitType(limit).then(function(response){
+                $scope.activeVisits = response.data.results;
+
+                console.log($scope.activeVisits);
+                for(var i=0;i<limit;i++){
+                    console.log(limit);
+                    var found = 0;
+                    var uuid = "";
+                    for(var j=0; j < $scope.activeVisits.length; j++){
+                        try{
+                            console.log($scope.search.activePatients[i].activeVisitUuid,$scope.activeVisits[j].uuid,$scope.activeVisits[j].display);
+                            if($scope.search.activePatients[i].activeVisitUuid == $scope.activeVisits[j].uuid && $scope.activeVisits[j].display.substring(0,3)=="CAG"){
+                                $scope.search.activePatients[i]['showIsCag'] = true;
+                                $scope.search.activePatients[i]['presentMember'] = false;
+                                $scope.search.activePatients[i]['cagName'] = "";
+                                found=1;
+                                j=$scope.activeVisits.length;
+                                uuid=$scope.search.activePatients[i].uuid;
+                                console.log($scope.search.activePatients);
+                                console.log(i,);
+                            }
+                        }catch (Exception) {
+                            // console.error(`Couldn't insert card ${x}`);
+                          }
+                        
+                    }
+                    
+                    if(uuid!=""){
+                        var pos=i;
+                        $q.all([$scope.isCagVisit(uuid, $scope.search.activePatients[i].uuid, pos)]).then(function(res){
+                            if(res){
+                                console.log(res[0],i,$scope.otherCagMemberList);
+                                if(res[0].status)   $scope.search.activePatients[res[0].index].presentMember = res[0].status;
+                                if(res[0].cagName!=undefined)  $scope.search.activePatients[res[0].index].cagName = res[0].cagName;
+                                if(res[0].otherMemberList.length==0)  $scope.otherCagMemberList.push({"uuid":$scope.search.activePatients[res[0].index].uuid,"index":res[0].index}) 
+                                // for (let k = 0; k < $scope.otherCagMemberList.length; k++) {
+                                //     console.log( $scope.otherCagMemberList, k,res[0].otherMemberList,$scope.search.activePatients );
+                                //     for(let j=0; j<res[0].otherMemberList.length; j++){
+                                //         if( $scope.otherCagMemberList[k].uuid== res[0].otherMemberList[j].patient.uuid) {
+                                //             console.log( $scope.otherCagMemberList, k,$scope.search.activePatients ,res[0].cagname,$scope.otherCagMemberList[k].index);
+                                //             $scope.search.activePatients[$scope.otherCagMemberList[k].index].cagName = $scope.search.activePatients[res[0].index].cagName;
+                                        
+                                //         }  
+                                //     } 
+                                // }
+
+                                // for(let j=0; j<res[0].otherMemberList.length; j++){
+                                //     for (let k = 0; k < $scope.search.activePatients.length; k++) {
+                                //         // console.log( $scope.otherCagMemberList, k,res[0].otherMemberList,$scope.search.activePatients );
+                                    
+                                //         if( $scope.search.activePatients[k].uuid== res[0].otherMemberList[j].patient.uuid && $scope.search.activePatients[k].cagName=="") {
+                                //             // console.log( $scope.otherCagMemberList, k,$scope.search.activePatients ,res[0].cagname,$scope.otherCagMemberList[k].index);
+                                //             $scope.search.activePatients[k].cagName = res[0].cagName;
+                                        
+                                //         }  
+                                //     } 
+                                // }
+                            }
+                            // $scope.cagLoad=0;
+                        })
+                    }
+                }
+                console.log($scope.search.activePatients);
+            });
+           
+        }
+        
         $scope.searchPatients = function () {
             return spinner.forPromise(patientService.search($scope.search.searchParameter)).then(function (response) {
                 $scope.search.updateSearchResults(response.data.pageOfResults);
@@ -2860,6 +3051,15 @@ angular.module('bahmni.common.patientSearch')
             }
         };
 
+        $scope.checkifCagPresentMember = function(patient, isCag, isPresentCagMember){
+            if((isPresentCagMember==true && isCag==true) || (isPresentCagMember==undefined && isCag==undefined)){
+                $scope.forwardPatient(patient);
+            }
+            else{
+                alert("Not a present cag member!",isCag);
+            }
+        }
+
         $scope.forwardPatient = function (patient, heading) {
             var options = $.extend({}, $stateParams);
             $rootScope.patientAdmitLocationStatus = patient.Status;
@@ -2908,6 +3108,7 @@ angular.module('bahmni.common.patientSearch')
             }
         };
         initialize();
+        
     }
 ]);
 
@@ -7469,10 +7670,11 @@ angular.module('bahmni.common.conceptSet')
 'use strict';
 
 angular.module('bahmni.common.conceptSet')
-    .directive('buttonSelect', function () {
+    .directive('buttonSelect', function ($rootScope) {
         return {
             restrict: 'E',
             scope: {
+                patient: '=',
                 observation: '=',
                 abnormalObs: '=?'
             },
@@ -7488,12 +7690,21 @@ angular.module('bahmni.common.conceptSet')
                 };
 
                 $scope.select = function (answer) {
+                    //setting cag present member 'type of patient' to ART Patient if Treatment Buddy selected on options
+                    if($rootScope.isCagPresentMemberVisit.results.length>0 && answer.uuid == "0f880c52-3ced-43ac-a79b-07a2740ae428" && answer==$scope.observation.possibleAnswers[0]){
+                        answer=$scope.observation.possibleAnswers[1];
+                    }
+                    //------end--------
+
+                    
                     $scope.observation.toggleSelection(answer);
                     if ($scope.$parent.observation && typeof $scope.$parent.observation.onValueChanged == 'function') {
                         $scope.$parent.observation.onValueChanged();
                     }
                     $scope.$parent.handleUpdate();
                 };
+
+                //check if obs is for present Cag member
 
                 $scope.getAnswerDisplayName = function (answer) {
                     var shortName = answer.names ? _.first(answer.names.filter(function (name) {
@@ -15346,7 +15557,8 @@ angular.module('bahmni.clinical')
                                     observationsService.fetch($scope.patient.uuid, [
                                         "HIVTC, Viral Load Blood drawn date",
                                         "HIVTC, Treatment substituted date",
-                                        "HIVTC, Treatment switched date"],
+                                        "HIVTC, Treatment switched date",
+                                        "ANC, Estimated Date of Delivery"],
                                         "latest")]);
                             };
             var getCurrentTab = function () {
@@ -15360,31 +15572,36 @@ angular.module('bahmni.clinical')
                 return (currentTab != undefined ? currentTab : clinicalDashboardConfig.currentTab);
             };
 
-            var determineReferenceDate = function (artStartDate, treatmentSubstitutionDate, treatmentSwitchDate) {
-                                var referenceObject = { referenceDate: "", referenceState: "" };
-                                if (artStartDate && !treatmentSubstitutionDate && !treatmentSwitchDate) {
-                                    referenceObject.referenceDate = artStartDate;
-                                    referenceObject.referenceState = "ART Initiation";
-                                } else if (artStartDate && treatmentSubstitutionDate && !treatmentSwitchDate) {
-                                    referenceObject.referenceDate = treatmentSubstitutionDate;
-                                    referenceObject.referenceState = "Treatment Substitution";
-                                } else if (artStartDate && !treatmentSubstitutionDate && treatmentSwitchDate) {
-                                    referenceObject.referenceDate = treatmentSwitchDate;
-                                    referenceObject.referenceState = "Treatment Switch";
-                                } else if (artStartDate && treatmentSubstitutionDate && treatmentSwitchDate) {
-                                    if (Bahmni.Common.Util.DateUtil.isBeforeDate(treatmentSwitchDate, treatmentSubstitutionDate)) {
-                                        referenceObject.referenceDate = treatmentSubstitutionDate;
-                                        referenceObject.referenceState = "Treatment Substitution";
-                                    } else {
-                                        referenceObject.referenceDate = treatmentSwitchDate;
-                                        referenceObject.referenceState = "Treatment Switch";
-                                    }
-                                } else {
-                                    // Nothing
-                                }
-                                return referenceObject;
-                            };
-
+            var determineReferenceDate = function (artStartDate, treatmentSubstitutionDate, treatmentSwitchDate, estimatedDateOfDeliveryDate) {
+                var referenceObject = { referenceDate: "", referenceState: "" };
+                var today = Bahmni.Common.Util.DateUtil.now();
+            
+                if (artStartDate && estimatedDateOfDeliveryDate && Bahmni.Common.Util.DateUtil.isBeforeDate(today, estimatedDateOfDeliveryDate)) {
+                    referenceObject.referenceDate = estimatedDateOfDeliveryDate;
+                    referenceObject.referenceState = "Estimated Date Of Delivery";
+                } else if (artStartDate && !treatmentSubstitutionDate && !treatmentSwitchDate) {
+                    referenceObject.referenceDate = artStartDate;
+                    referenceObject.referenceState = "ART Initiation";
+                } else if (artStartDate && treatmentSubstitutionDate && !treatmentSwitchDate) {
+                    referenceObject.referenceDate = treatmentSubstitutionDate;
+                    referenceObject.referenceState = "Treatment Substitution";
+                } else if (artStartDate && !treatmentSubstitutionDate && treatmentSwitchDate) {
+                    referenceObject.referenceDate = treatmentSwitchDate;
+                    referenceObject.referenceState = "Treatment Switch";
+                } else if (artStartDate && treatmentSubstitutionDate && treatmentSwitchDate) {
+                    if (Bahmni.Common.Util.DateUtil.isBeforeDate(treatmentSwitchDate, treatmentSubstitutionDate)) {
+                        referenceObject.referenceDate = treatmentSubstitutionDate;
+                        referenceObject.referenceState = "Treatment Substitution";
+                    } else {
+                        referenceObject.referenceDate = treatmentSwitchDate;
+                        referenceObject.referenceState = "Treatment Switch";
+                    }
+                } else {
+                    // Nothing
+                }
+                return referenceObject;
+            };
+            
             $scope.init = function (dashboard) {
                 dashboard.startDate = null;
                 dashboard.endDate = null;
@@ -15401,28 +15618,42 @@ angular.module('bahmni.clinical')
                         $scope.diseaseTemplates = diseaseTemplate;
                         $scope.sectionGroups = dashboardModel.getSections($scope.diseaseTemplates);
 
-            getARTStartDate().then(function (result) {
-                                if (result[0].data.length > 0 || result[1].data.length > 0) {
-                                    var today = Bahmni.Common.Util.DateUtil.now();
-                                    var artStartDate = result[0].data.length > 0 ?
-                                    Bahmni.Common.Util.DateUtil.parseServerDateToDate(result[0].data[0].valueAsString) : null;
-                                    var lastDateSpecimenCollected = _.find(result[1].data, function (observation) {
-                                        return observation.concept.name === "HIVTC, Viral Load Blood drawn date";
-                                    });
-                                    var treatmentSwitch = _.find(result[1].data, function (observation) {
-                                        return observation.concept.name === "HIVTC, Treatment switched date";
-                                    });
-                                    var treatmentSubstitution = _.find(result[1].data, function (observation) {
-                                        return observation.concept.name === "HIVTC, Treatment substituted date";
-                                    });
-                                    var treatmentSubstitutionDate = treatmentSubstitution ?
-                                    Bahmni.Common.Util.DateUtil.parseServerDateToDate(treatmentSubstitution.valueAsString) : null;
-                                    var treatmentSwitchDate = treatmentSwitch ?
-                                    Bahmni.Common.Util.DateUtil.parseServerDateToDate(treatmentSwitch.valueAsString) : null;
-                                    var referenceObject = determineReferenceDate(artStartDate, treatmentSubstitutionDate, treatmentSwitchDate);
+                        getARTStartDate().then(function (result) {
+                            if (result[0].data.length > 0 || result[1].data.length > 0) {
+                                var today = Bahmni.Common.Util.DateUtil.now();
+                                var artStartDate = result[0].data.length > 0 ? Bahmni.Common.Util.DateUtil.parseServerDateToDate(result[0].data[0].valueAsString) : null;
+                        
+                                var lastDateSpecimenCollected = _.find(result[1].data, function (observation) {
+                                    return observation.concept.name === "HIVTC, Viral Load Blood drawn date";
+                                });
+                                var treatmentSwitch = _.find(result[1].data, function (observation) {
+                                    return observation.concept.name === "HIVTC, Treatment switched date";
+                                });
+                                var treatmentSubstitution = _.find(result[1].data, function (observation) {
+                                    return observation.concept.name === "HIVTC, Treatment substituted date";
+                                });
+                                var estimatedDateOfDelivery = _.find(result[1].data, function (observation) {
+                                    return observation.concept.name === "ANC, Estimated Date of Delivery";
+                                });
+                        
+                                var treatmentSubstitutionDate = treatmentSubstitution ? Bahmni.Common.Util.DateUtil.parseServerDateToDate(treatmentSubstitution.valueAsString) : null;
+                                var treatmentSwitchDate = treatmentSwitch ? Bahmni.Common.Util.DateUtil.parseServerDateToDate(treatmentSwitch.valueAsString) : null;
+                                var estimatedDateOfDeliveryDate = estimatedDateOfDelivery ? Bahmni.Common.Util.DateUtil.parseServerDateToDate(estimatedDateOfDelivery.valueAsString) : null;
+                        
+                                var referenceObject = determineReferenceDate(artStartDate, treatmentSubstitutionDate, treatmentSwitchDate, estimatedDateOfDeliveryDate);
+                        
+                                if (referenceObject.referenceState === "Estimated Date Of Delivery") {
+                                    // Custom notification for Estimated Date Of Delivery
+                                    var threeMonthsAgo = Bahmni.Common.Util.DateUtil.addMonths(today, -3);
+                        
+                                    if (!lastDateSpecimenCollected || Bahmni.Common.Util.DateUtil.isBeforeDate(Bahmni.Common.Util.DateUtil.parseServerDateToDate(lastDateSpecimenCollected.valueAsString), threeMonthsAgo)) {
+                                        messagingService.showMessage('reminder', "Patient is due for 3 monthly Viral Load blood draw, since client is ANC patient");
+                                    }
+                                } else {
                                     var dateDiffinDays = Bahmni.Common.Util.DateUtil.diffInDays(referenceObject.referenceDate, today);
                                     var dateDiffInMonthsFloor = Math.floor((dateDiffinDays * 12) / 365);
                                     var dateDiffinMonthsCeil = Math.ceil((dateDiffinDays * 12) / 365);
+                        
                                     // If the difference between today and the reference date does not exceed 12 months
                                     if (dateDiffinDays > 0 && dateDiffinDays <= 365) {
                                         // After every 6 months and if no blood was drawn 1 month prior to the encounter date
@@ -15432,12 +15663,10 @@ angular.module('bahmni.clinical')
                                                     var recentBloodDrawDate = Bahmni.Common.Util.DateUtil.parseServerDateToDate(lastDateSpecimenCollected.valueAsString);
                                                     var recentVLBloodDrawDiff = Bahmni.Common.Util.DateUtil.diffInDays(recentBloodDrawDate, today);
                                                     if (recentVLBloodDrawDiff > 0 && !(recentVLBloodDrawDiff <= 31)) {
-                                                        messagingService.showMessage('reminder', "Patient is due for 6 monthly Viral Load blood draw, since "
-                                                        + referenceObject.referenceState);
+                                                        messagingService.showMessage('reminder', "Patient is due for 6 monthly Viral Load blood draw, since " + referenceObject.referenceState);
                                                     }
                                                 } else {
-                                                    messagingService.showMessage('reminder', "Patient is due for 6 monthly Viral Load blood draw, since "
-                                                    + referenceObject.referenceState);
+                                                    messagingService.showMessage('reminder', "Patient is due for 6 monthly Viral Load blood draw, since " + referenceObject.referenceState);
                                                 }
                                             }
                                         }
@@ -15448,21 +15677,18 @@ angular.module('bahmni.clinical')
                                                 var recentBloodDrawDate = Bahmni.Common.Util.DateUtil.parseServerDateToDate(lastDateSpecimenCollected.valueAsString);
                                                 var recentVLBloodDrawDiff = Bahmni.Common.Util.DateUtil.diffInDays(recentBloodDrawDate, today);
                                                 if (recentVLBloodDrawDiff > 0 && !(recentVLBloodDrawDiff <= 31)) {
-                                                    messagingService.showMessage('reminder', "Patient is due for 12 monthly Viral Load blood draw, since "
-                                                    + referenceObject.referenceState);
+                                                    messagingService.showMessage('reminder', "Patient is due for 12 monthly Viral Load blood draw, since " + referenceObject.referenceState);
                                                 }
                                             } else {
-                                                messagingService.showMessage('reminder', "Patient is due for 12 monthly Viral Load blood draw, since "
-                                                + referenceObject.referenceState);
+                                                messagingService.showMessage('reminder', "Patient is due for 12 monthly Viral Load blood draw, since " + referenceObject.referenceState);
                                             }
                                         }
                                     }
                                 }
-                            });
-
-
-                                                    
-
+                            }
+                        });
+                        
+                        
                     });
                 $scope.currentDashboardTemplateUrl = $state.current.views['dashboard-content'] ?
                     $state.current.views['dashboard-content'].templateUrl : $state.current.views['dashboard-content'];
@@ -18888,22 +19114,31 @@ angular.module('bahmni.clinical').controller('ConsultationController',
     ['$scope', '$rootScope', '$state', '$location', '$translate', 'clinicalAppConfigService', 'diagnosisService', 'urlHelper', 'contextChangeHandler',
         'spinner', 'encounterService', 'messagingService', 'sessionService', 'retrospectiveEntryService', 'patientContext', '$q',
         'patientVisitHistoryService', '$stateParams', '$window', 'visitHistory', 'clinicalDashboardConfig', 'appService',
-        'ngDialog', '$filter', 'configurations', 'visitConfig', 'conditionsService', 'configurationService', 'auditLogService', 'patientService',
+        'ngDialog', '$filter', 'configurations', 'visitConfig', 'conditionsService', 'configurationService', 'auditLogService', 'patientService','observationsService','$timeout',
         function ($scope, $rootScope, $state, $location, $translate, clinicalAppConfigService, diagnosisService, urlHelper, contextChangeHandler,
             spinner, encounterService, messagingService, sessionService, retrospectiveEntryService, patientContext, $q,
             patientVisitHistoryService, $stateParams, $window, visitHistory, clinicalDashboardConfig, appService,
-            ngDialog, $filter, configurations, visitConfig, conditionsService, configurationService, auditLogService, patientService) {
+            ngDialog, $filter, configurations, visitConfig, conditionsService, configurationService, auditLogService, patientService,observationsService,$timeout) {
             var DateUtil = Bahmni.Common.Util.DateUtil;
+            // DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
             var getPreviousActiveCondition = Bahmni.Common.Domain.Conditions.getPreviousActiveCondition;
-            $scope.togglePrintList = false;
+            $scope.togglePrintList = false;   
             $scope.patient = patientContext.patient;
+
+            appService.getCagPatient($scope.patient.uuid).then(function(response){$rootScope.isCagPresentMemberVisit= response.data;});//helps set type of member = ART Patient for CAG present member
             $scope.showDashboardMenu = false;
             $scope.stateChange = function () {
                 return $state.current.name === 'patient.dashboard.show';
             };
             $scope.showComment = true;
             $scope.showSaveAndContinueButton = true;
-
+            $scope.isCagMember = true;
+            $scope.availableCagId = [];
+            $scope.availableCagDetails = [];
+            $scope.cagPatientVisitList = {};
+            $scope.patientVisitData = []// Other 
+            $scope.cagPatientObsertions = [];
+            $scope.runCagEncounterPostOnce = 0;
             $scope.visitHistory = visitHistory;
             $scope.consultationBoardLink = clinicalAppConfigService.getConsultationBoardLink();
             $scope.showControlPanel = false;
@@ -19258,7 +19493,6 @@ angular.module('bahmni.clinical').controller('ConsultationController',
 
                 var observationFilter = new Bahmni.Common.Domain.ObservationFilter();
                 $scope.consultation.preSaveHandler.fire();
-                console.log($scope.consultation);
                 $scope.lastvisited = $scope.consultation.lastvisited;
                 var selectedObsTemplate = $scope.consultation.selectedObsTemplate;
                 var tempConsultation = angular.copy($scope.consultation);
@@ -19376,53 +19610,909 @@ angular.module('bahmni.clinical').controller('ConsultationController',
                 $scope.dashboardDirty = true;
             };
 
+            $scope.fetchPrevRegimen = function (patientUuids,visitUuid) {
+                console.log("===", patientUuids);
+                var deferred = $q.defer();
+                observationsService.fetch(patientUuids, [
+                    "HIVTC, ART Regimen"
+                ], "latest")
+                .then(function (response){  
+                    if(response.data.length>0){
+                        console.log("Response data : : : ",response);
+                        var patientRegimen = response.data[0].value.name;
+                        var patientRegimenUuid = response.data[0].value.uuid;
+                        var patientVisitData = 
+                        { 
+                            "patientUuid" : patientUuids,
+                            "patientVisitUuid" : visitUuid,
+                            "patientRegimen": patientRegimen,
+                            "patientRegimenUuid": patientRegimenUuid
+                        };
+                        console.log("inner loop: ",patientVisitData);
+                        
+                        $scope.patientVisitData.push(
+                            patientVisitData
+                        );  
+                        console.log("patientVisitData = ", $scope.patientVisitData);
+                        deferred.resolve(true);
+                    } 
+                    else{
+                        var patientVisitData = 
+                        { 
+                            "patientUuid" : patientUuids,
+                            "patientVisitUuid" : visitUuid,
+                            "patientRegimen": "",
+                            "patientRegimenUuid": ""
+                        };
+                        console.log("inner loop: ",patientVisitData);
+                        
+                        $scope.patientVisitData.push(
+                            patientVisitData
+                        );  
+                        console.log("patientVisitData = ", $scope.patientVisitData);
+                        deferred.resolve(true);
+                    }
+                    
+                }).catch(function(error){console.log(error)}); 
+                return deferred.promise;
+            }
+            $scope.CAGPresentMemberOrders=[];
+            
+            $scope.$watchGroup(['consultation','consultation.newlyAddedTabTreatments','consultation.newlyAddedTabTreatments.allMedicationTabConfig','consultation.newlyAddedTabTreatments.allMedicationTabConfig.treatments','consultation.newlyAddedTabTreatments.allMedicationTabConfig.orderSetTreatments'], function(){
+                console.log("=======",$scope.observation);
+                var cagEncounterDateTime = DateUtil.getDateTimeInSpecifiedFormat(DateUtil.now(),"YYYY-MM-DD hh:mm:ss");
+                var autoExpireDate = Bahmni.Common.Util.DateUtil.addDays(cagEncounterDateTime,3);
+                    
+                autoExpireDate = moment(autoExpireDate, "YYYY-MM-DDTHH:mm:ss.SSSZZ").format();
+                var cag_order = {
+                    "type": "drugorder",
+                    "patient": $scope.patient.uuid,
+                    "orderType": "131168f4-15f5-102d-96e4-000c29c2a5d7",
+                    "concept":  undefined,
+                    "dateActivated" : cagEncounterDateTime,
+                    "autoExpireDate" : autoExpireDate,
+                    "orderer" : $rootScope.currentProvider.uuid, // should get the current logged Provider
+                    "urgency": "ON_SCHEDULED_DATE",
+                    "careSetting": "6f0c9a92-6f24-11e3-af88-005056821db0",
+                    "scheduledDate":  cagEncounterDateTime,
+                    "dose": 0,
+                    "doseUnits": undefined,
+                    "frequency": undefined,
+                    "quantity":  0,
+                    "quantityUnits": undefined,
+                     "drug": undefined,
+                    "numRefills": 0,
+                    "dosingInstructions": "{\"instructions\":\"As directed\"}",
+                    "duration":  0,
+                    "durationUnits": undefined,
+                    "route": "undefined",
+                    "action": "NEW"
+                };
+                try {
+                    if($scope.consultation.newlyAddedTabTreatments){
+                        if($scope.consultation.newlyAddedTabTreatments.allMedicationTabConfig.treatments){
+                            // var CAGorderData=$scope.consultation.newlyAddedTabTreatments.allMedicationTabConfig.treatments;
+                            // for(let i = 0; i < CAGorderData.length; i++){
+                            //     cag_order.concept=CAGorderData[i].concept.uuid;
+                            //     cag_order.dose=cag_order.uniformDosingType.dose;
+                            //     cag_order.doseUnits=cag_order.uniformDosingType.doseUnits;
+                            //     cag_order.frequency="";
+                            //     cag_order.quantity=0;
+                            //     cag_order.quantityUnits="";
+                            //     cag_order.drug=CAGorderData[i].drug.uuid;
+                            //     cag_order.duration=0;
+                            //     cag_order.durationUnits="";
+                            //     cag_order.route="";
+                            // }
+                            // alert(JSON.stringify($scope.consultation.newlyAddedTabTreatments.allMedicationTabConfig.treatments));
+                            console.log($scope.consultation.newlyAddedTabTreatments.allMedicationTabConfig.treatments);
+                        }   
+                    }
+                } 
+                catch (error) {
+                    console.log(error);
+                }
+
+            })
+            $scope.fetchPrevObsData = function (patientUuids) {
+                console.log("===", patientUuids);
+                var deferred = $q.defer();
+                observationsService.fetch(patientUuids, [
+                    "Type of client",
+                    // "Appointment scheduled",
+                    "ART, Follow-up date",
+                    // "HIVTC, ARV drugs supply duration",
+                    // "ARV drugs No. of days dispensed", 
+                    "HIVTC, HIV care WHO Staging",
+                    // "Cotrimoxazole adherence",
+                    // "Cotrimoxazole No of days dispensed"
+                ], "latest",1)
+                .then(function (response){
+                    console.log(response)   
+                    deferred.resolve(response)
+                    
+                }).catch(function(error){console.log(error)}); 
+                return deferred.promise;
+            }
+
+            $scope.isCagVisit = function(uuid){
+                var deferred = $q.defer();
+                appService.getCagPatient(uuid).then(function(response){
+                    console.log(response);
+                    if(response.data.results.length == 1){
+                        deferred.resolve(true);
+                    }
+                    else{
+                        deferred.resolve(false);
+                    }
+                })
+                return deferred.promise;
+            }
+            // console.log($scope.consultation);
             $scope.save = function (toStateConfig) {
                 appService.setOrderstatus(true);
                 if (!isFormValid()) {
                     $scope.$parent.$parent.$broadcast("event:errorsOnForm");
                     return $q.when({});
                 }
-                return spinner.forPromise($q.all([preSavePromise(), encounterService.getEncounterType($state.params.programUuid, sessionService.getLoginLocationUuid())]).then(function (results) {
-                    var encounterData = results[0];
-                    encounterData.encounterTypeUuid = results[1].uuid;
-                    var params = angular.copy($state.params);
-                    params.cachebuster = Math.random();
-                    return encounterService.create(encounterData)
-                        .then(function (saveResponse) {
-                            var messageParams = { encounterUuid: saveResponse.data.encounterUuid, encounterType: saveResponse.data.encounterType };
-                            auditLogService.log($scope.patient.uuid, "EDIT_ENCOUNTER", messageParams, "MODULE_LABEL_CLINICAL_KEY");
-                            var consultationMapper = new Bahmni.ConsultationMapper(configurations.dosageFrequencyConfig(), configurations.dosageInstructionConfig(),
-                                configurations.consultationNoteConcept(), configurations.labOrderNotesConcept(), $scope.followUpConditionConcept);
-                            var consultation = consultationMapper.map(saveResponse.data);
-                            consultation.lastvisited = $scope.lastvisited;
-                            return consultation;
-                        }).then(function (savedConsultation) {
-                            return spinner.forPromise(diagnosisService.populateDiagnosisInformation($scope.patient.uuid, savedConsultation)
-                                .then(function (consultationWithDiagnosis) {
-                                    return saveConditions().then(function (savedConditions) {
-                                        consultationWithDiagnosis.conditions = savedConditions;
-                                        messagingService.showMessage('info', "{{'CLINICAL_SAVE_SUCCESS_MESSAGE_KEY' | translate}}");
-                                    }, function () {
-                                        consultationWithDiagnosis.conditions = $scope.consultation.conditions;
-                                    }).then(function () {
-                                        copyConsultationToScope(consultationWithDiagnosis);
-                                        if ($scope.targetUrl) {
-                                            return $window.open($scope.targetUrl, "_self");
-                                        }
-                                        return $state.transitionTo(toStateConfig ? toStateConfig.toState : $state.current, toStateConfig ? toStateConfig.toParams : params, {
-                                            inherit: false,
-                                            notify: true,
-                                            reload: (toStateConfig !== undefined)
-                                        });
-                                    });
-                                }));
-                        }).catch(function (error) {
-                            var message = Bahmni.Clinical.Error.translate(error) || "{{'CLINICAL_SAVE_FAILURE_MESSAGE_KEY' | translate}}";
-                            messagingService.showMessage('error', message);
-                        });
-                }));
-            };
+                return $q.all([ $scope.isCagVisit($scope.patient.uuid)]).then(function(results){
+                    console.log(results);
+                    if(results[0] == true){
+                        var patientUuid =  $scope.patient.uuid;      
+                        appService.getCagPatient(patientUuid)
+                        .then(function(response){
+                            if(response.status == 200 ){
+                                
+                                var visitData = response.data;
+                                
+                                console.log("cag visit Patient data :",visitData);
+                                
+                                $scope.cagVisitUuid = visitData.results[0].uuid;
+                                
+                                $scope.cagUuid = visitData.results[0].cag.uuid;                                     
+                                $scope.attenderUuid = visitData.results[0].attender.uuid;
 
+                                var patientVisits = visitData.results[0].visits;
+                                var count = 1;
+                                patientVisits.forEach(function(res){  
+                                    console.log("Visit data : ",res);
+                                    
+                                    $scope.patientUuids = res.patient.uuid;
+                                    $scope.patientVisitUuid = res.uuid;
+                                    $scope.cagVisitLocation = res.location.uuid; 
+
+                                    //console.log("patient uuid = ",res.patient.uuid);
+                                    $scope.complete = false
+                                    // Fetch individual regimen from observation end point
+                                        $q.all([$scope.fetchPrevRegimen($scope.patientUuids,$scope.patientVisitUuid)]).then(function(response){
+                                            if(patientVisits.length == count){
+                                                $scope.complete = true;
+                                            }
+                                            console.log($scope.patientVisitData[count-1]);
+                                            // if($patientVisitData)
+                                            count++;
+                                        });
+
+                                        
+                                                                                                                                    
+                                });  
+                                
+                                
+                                $q.all([$scope.fetchPrevObsData($scope.patient.uuid)]).then(function (res){  
+                                    console.log(res[0].data);
+                                    // $scope.cagEncounterDateTime = DateUtil.getDateTimeInSpecifiedFormat(DateUtil.now(),"YYYY-MM-DDThh:mm:ss.ss+HHMM");
+                                    // $scope.obsDateTime = DateUtil.getDateTimeInSpecifiedFormat(DateUtil.now(),"YYYY-MM-DDThh:mm:ss.ss+HHMM")
+
+                                    $scope.cagEncounterDateTime = DateUtil.getDateTimeInSpecifiedFormat(DateUtil.now(),"YYYY-MM-DD hh:mm:ss");
+                                    $scope.obsDateTime = DateUtil.getDateTimeInSpecifiedFormat(DateUtil.now(),"YYYY-MM-DD hh:mm:ss")
+                                    
+                                    var data = res[0].data;  
+
+                                    $q.all([preSavePromise(), encounterService.getEncounterType($state.params.programUuid, sessionService.getLoginLocationUuid())]).then(function (res2){
+                                        
+                                        console.log(preSavePromise());
+                                        // 746818ac-65a0-4d74-9609-ddb2c330a31b
+                                        if(res2[0]){
+                                            if(res2[0].observations.length==1 && res2[0].observations[0].concept.uuid=="746818ac-65a0-4d74-9609-ddb2c330a31b"){
+                                                $scope.provider = $rootScope.currentProvider.uuid;                                               
+                                                for(var i = 0; i < res2[0].observations[0].groupMembers.length; i++){
+                                                    console.log($scope.consultation);
+                                                    if(res2[0].observations[0].groupMembers[i].concept.uuid=="65aa58be-3957-4c82-ad63-422637c8dd18"){
+                                                        var formData = res2[0].observations[0].groupMembers[i];
+                                                        
+                                                        for(var j = 0; j < formData.groupMembers.length; j++){
+                                                            console.log("form data == ",formData.groupMembers[j]);
+                                                            //Type of client
+                                                            if(formData.groupMembers[j].concept.uuid=="e0bc761d-ac3b-4033-92c7-476304b9c5e8"){
+                                                                formData.groupMembers[j].value= formData.groupMembers[j].possibleAnswers[1];
+                                                                formData.groupMembers[j]._value= formData.groupMembers[j].possibleAnswers[1];
+                                                                console.log(formData.groupMembers[j].value);
+                                                                $scope.TypeOfClientTreatmentValue = formData.groupMembers[j].value.displayString; 
+                                                                $scope.TypeOfClientTreatmentUuid = formData.groupMembers[j].value.uuid;
+                                                                console.log(formData.groupMembers[j].concept.uuid);
+                                                            }
+                                                            //Appointment scheduled
+                                                            else  if(formData.groupMembers[j].concept.uuid == "ed064424-0331-47f6-9532-77156f40a014"){
+                                                                $scope.AppointmentScheduledValue = formData.groupMembers[j].value.displayString;
+                                                                $scope.AppointmentScheduledUuid = formData.groupMembers[j].value.uuid; 
+                                                            } 
+                                                            //Follow-up date
+                                                            else if(formData.groupMembers[j].concept.uuid == "88489023-783b-4021-b7a9-05ca9877bf67"){
+                                                                $scope.nextCagEncounterDateValue = formData.groupMembers[j].value;
+                                                                $scope.nextCagEncounterDateUuid = formData.groupMembers[j].concept.uuid;
+                                                            }
+                                                            //drug supply duration
+                                                            else if(formData.groupMembers[j].concept.uuid == "9eb00622-1078-4f7b-aa69-61e6c36db347"){
+                                                                $scope.ARVDrugsSupplyDurationValue = formData.groupMembers[j].value.names[1].name; 
+                                                                $scope.ARVDrugsSupplyDurationUuid = formData.groupMembers[j].value.uuid; 
+                                                                $scope.ARVDrugsSupplyDurationName = formData.groupMembers[j].value.displayString;
+                                                            
+                                                            }
+                                                            //Drugs days dispensed
+                                                            else if(formData.groupMembers[j].concept.uuid == "27d55083-5e66-4b5a-91d3-2c9a42cc9996"){
+                                                                $scope.DrugsDaysDispensedValue = formData.groupMembers[j].value;
+                                                                $scope.DrugsDaysDispensedUuid = formData.groupMembers[j].concept.uuid; 
+                                                            
+                                                            }
+                                                            //WHO Staging
+                                                            else if(formData.groupMembers[j].concept.uuid == "95e1fc28-84ab-4971-8bb1-d8ee68ef5739"){
+                                                                $scope.HIVCareWHOStagingValue = formData.groupMembers[j].value.displayString;
+                                                                $scope.HIVCareWHOStagingUuid = formData.groupMembers[j].value.uuid;
+                    
+                                                            }
+                                                            //Cotrimoxazole adherence
+                                                            else if(formData.groupMembers[j].concept.uuid == "e8d05f4a-9c3f-4f99-941c-596f238f095f"){
+                                                                $scope.CotrimoxazoleAdherenceValue = formData.groupMembers[j].value.displayString;
+                                                                $scope.CotrimoxazoleAdherenceUuid = formData.groupMembers[j].value.uuid;                                                                    
+                                                            }
+                                                            //Cotrimoxazole days dispensed
+                                                            else if(formData.groupMembers[j].concept.uuid == "3485a002-f72f-43fd-8ba7-0288273489da"){
+                                                                $scope.cotrimoxazoleNoOfDaysValue = formData.groupMembers[j].value;
+                                                                $scope.cotrimoxazoleNoOfDaysUuid  = formData.groupMembers[j].concept.uuid;  
+                                                            }
+                                                            if( $scope.CotrimoxazoleAdherenceUuid == undefined){
+                                                                $scope.CotrimoxazoleAdherenceValue = "Not Applicable";
+                                                                $scope.CotrimoxazoleAdherenceUuid = "f2355233-c552-4cd6-802f-0c7c75221f03";
+                                                            }
+                                                            if( $scope.cotrimoxazoleNoOfDaysUuid == undefined){
+                                                                $scope.cotrimoxazoleNoOfDaysValue = 0;
+                                                                $scope.cotrimoxazoleNoOfDaysUuid  = "3485a002-f72f-43fd-8ba7-0288273489da";  
+                                                            }
+                                                            if($scope.HIVCareWHOStagingUuid == undefined){
+                                                                $scope.HIVCareWHOStagingValue = "Stage I";
+                                                                $scope.HIVCareWHOStagingUuid = "aedaa567-d708-44db-95ea-b3b30790ffc8";
+                                                            }
+                                                        }
+                                                        res2[0].observations[0].groupMembers[i]=formData;
+                                                    }
+                                                }
+                                                // $scope.consultation.observations=res2[0].observations;
+                                                console.log($scope.consultation);
+                                                console.log("cagUuid :",$scope.cagUuid);
+                                                console.log("cagVisitUuid :",$scope.cagVisitUuid);
+                                                console.log("cagEncounterDateTime :",$scope.cagEncounterDateTime);
+                                                console.log("obsDateTime :",$scope.obsDateTime);
+                                                console.log("nextCagEncounterDateValue :",$scope.nextCagEncounterDateValue);
+                                                console.log("nextCagEncounterDateUuid :",$scope.nextCagEncounterDateUuid);
+                                                console.log("locationUuid :",$scope.cagVisitLocation);  
+                                                console.log("attenderUuid :",$scope.attenderUuid);
+                                                console.log("TypeOfClientTreatmentValue :",$scope.TypeOfClientTreatmentValue);
+                                                console.log("TypeOfClientTreatmentUuid : ",$scope.TypeOfClientTreatmentUuid);
+                                                console.log("AppointmentScheduledValue :",$scope.AppointmentScheduledValue);
+                                                console.log("AppointmentScheduledUuid :",$scope.AppointmentScheduledUuid);
+                                                console.log("ARVDrugsSupplyDurationValue :",$scope.ARVDrugsSupplyDurationValue);
+                                                console.log("ARVDrugsSupplyDurationUuid :",$scope.ARVDrugsSupplyDurationUuid);
+                                                console.log("ARVDrugsSupplyDurationName :",$scope.ARVDrugsSupplyDurationName);
+                                                console.log("DrugsDaysDispensedValue :",$scope.DrugsDaysDispensedValue);
+                                                console.log("DrugsDaysDispensedUuid :",$scope.DrugsDaysDispensedUuid);
+                                                console.log("HIVCareWHOStagingValue :",$scope.HIVCareWHOStagingValue);
+                                                console.log("HIVCareWHOStagingUuid :",$scope.HIVCareWHOStagingUuid);
+                                                console.log("CotrimoxazoleAdherenceValue :",$scope.CotrimoxazoleAdherenceValue);
+                                                console.log("CotrimoxazoleAdherenceUuid :",$scope.CotrimoxazoleAdherenceUuid);
+                                                console.log("cotrimoxazoleNoOfDaysValue :",$scope.cotrimoxazoleNoOfDaysValue);
+                                                console.log("cotrimoxazoleNoOfDaysUuid :",$scope.cotrimoxazoleNoOfDaysUuid);
+                                                console.log("provider :",$scope.provider);
+                                                console.log("patientVisitData :",$scope.patientVisitData); 
+                                                console.log($scope.consultation.newlyAddedTabTreatments);
+
+                                                //The function to return POST reponse
+                                                var postCagEncounter = createCagEncounter(
+                                                    $scope.cagUuid
+                                                    ,$scope.cagVisitUuid
+                                                    ,$scope.cagEncounterDateTime
+                                                    ,$scope.obsDateTime
+                                                    ,$scope.nextCagEncounterDateValue
+                                                    ,$scope.nextCagEncounterDateUuid
+                                                    ,$scope.cagVisitLocation
+                                                    ,$scope.attenderUuid
+                                                    ,$scope.TypeOfClientTreatmentValue
+                                                    ,$scope.TypeOfClientTreatmentUuid
+                                                    ,$scope.AppointmentScheduledValue
+                                                    ,$scope.AppointmentScheduledUuid
+                                                    ,$scope.ARVDrugsSupplyDurationValue
+                                                    ,$scope.ARVDrugsSupplyDurationUuid
+                                                    ,$scope.ARVDrugsSupplyDurationName
+                                                    ,$scope.DrugsDaysDispensedValue
+                                                    ,$scope.DrugsDaysDispensedUuid
+                                                    ,$scope.HIVCareWHOStagingValue
+                                                    ,$scope.HIVCareWHOStagingUuid
+                                                    ,$scope.CotrimoxazoleAdherenceValue
+                                                    ,$scope.CotrimoxazoleAdherenceUuid
+                                                    ,$scope.cotrimoxazoleNoOfDaysValue
+                                                    ,$scope.cotrimoxazoleNoOfDaysUuid
+                                                    ,$scope.provider
+                                                    ,$scope.patientVisitData
+                                                );
+                                                
+                                                // Post cagEncounter
+                                                postCagEncounter.then(function(cagEncounter){
+                                                    if(cagEncounter.status == 201){
+                                                        console.info("CAG Encounter successully posted!!!!",cagEncounter);
+                                                        for (let index = 0; index < $scope.patientVisitData.length; index++) {
+                                                            console.log($scope.patientVisitData);
+                                                            var appointment = {
+                                                                "uuid" : null,
+                                                                "patientUuid": $scope.patientVisitData[index].patientUuid,
+                                                                "serviceUuid": "0c8dfd62-776a-4ddd-bcee-f2570c0721fa",
+                                                                "serviceTypeUuid": "257dcd02-e539-46fb-b61c-b23e413935c2",
+                                                                "providerUuid":$rootScope.currentProvider.uuid,
+                                                                "startDateTime": $scope.nextCagEncounterDateValue,
+                                                                "endDateTime": $scope.nextCagEncounterDateValue,
+                                                                "locationUuid": "0d4cb392-b10f-473e-8dde-784cd3996cbb",
+                                                                "appointmentKind": "Scheduled"
+                                                            }
+                                                            appService.createAppointment(appointment).then(function(reply){
+                                                                console.log(reply);
+                                                            });
+                                                        }
+                                                        
+                                                        for(let p = 0; p < cagEncounter.data.encounters.length; p++){
+                                                            encounterService.findByEncounterUuid(cagEncounter.data.encounters[p].uuid).then(function(cagEncouterData){
+                                                                if(cagEncouterData.data.patientUuid==$scope.attenderUuid){
+                                                                    var params = angular.copy($state.params);
+                                                                    params.cachebuster = Math.random();
+
+                                                                    encounterService.findByEncounterUuid(cagEncounter.data.encounters[p].uuid).then(function (saveResponse) {
+                                                                        var messageParams = { encounterUuid: saveResponse.data.encounterUuid, encounterType: saveResponse.data.encounterType };
+                                                                        auditLogService.log($scope.patient.uuid, "EDIT_ENCOUNTER", messageParams, "MODULE_LABEL_CLINICAL_KEY");
+                                                                        console.log(configurations.dosageFrequencyConfig());
+                                                                        var consultationMapper = new Bahmni.ConsultationMapper(configurations.dosageFrequencyConfig(), configurations.dosageInstructionConfig(),
+                                                                            configurations.consultationNoteConcept(), configurations.labOrderNotesConcept(), $scope.followUpConditionConcept);
+                                                                        var consultation = consultationMapper.map(saveResponse.data);
+                                                                        consultation.lastvisited = $scope.lastvisited;
+                                                                        return consultation;
+                                                                    }).then(function (savedConsultation) {
+                                                                        return spinner.forPromise(diagnosisService.populateDiagnosisInformation($scope.patient.uuid, savedConsultation)
+                                                                            .then(function (consultationWithDiagnosis) {
+                                                                                return saveConditions().then(function (savedConditions) {
+                                                                                    consultationWithDiagnosis.conditions = savedConditions;
+                                                                                    messagingService.showMessage('info', "{{'CLINICAL_SAVE_SUCCESS_MESSAGE_KEY' | translate}}");
+                                                                                }, function () {
+                                                                                    consultationWithDiagnosis.conditions = $scope.consultation.conditions;
+                                                                                }).then(function () {
+                                                                                    copyConsultationToScope(consultationWithDiagnosis);
+                                                                                    console.log(copyConsultationToScope(consultationWithDiagnosis));
+                                                                                    if ($scope.targetUrl) {
+                                                                                        return $window.open($scope.targetUrl, "_self");
+                                                                                    }
+                                                                                    return $state.transitionTo(toStateConfig ? toStateConfig.toState : $state.current, toStateConfig ? toStateConfig.toParams : params, {
+                                                                                        inherit: false,
+                                                                                        notify: true,
+                                                                                        reload: (toStateConfig !== undefined)
+                                                                                    });
+                                                                                });
+                                                                            }));
+                                                                    }).catch(function (error) {
+                                                                        var message = Bahmni.Clinical.Error.translate(error) || "{{'CLINICAL_SAVE_FAILURE_MESSAGE_KEY' | translate}}";
+                                                                        messagingService.showMessage('error', message);
+                                                                    });;
+                                                                }
+                                                            
+                                                            })
+                                                        }
+                                                        // var params = angular.copy($state.params);
+                                                        // params.cachebuster = Math.random();
+                                                        // messagingService.showMessage('info',"Saved CAG Consultation Successully");
+                                                        // return $state.transitionTo(toStateConfig ? toStateConfig.toState : $state.current, toStateConfig ? toStateConfig.toParams : params, {
+                                                        //     inherit: true,
+                                                        //     notify: true,
+                                                        //     reload: true
+                                                        // });
+                                                    }
+                                                }).catch(
+                                                    function(err){
+                                                        
+                                                        messagingService.showMessage('error',err.data.error.message);
+                                                    }
+                                                );
+                                            }
+                                            else{
+                                                alert("can only save HIV Care and Treatment - Followup form");
+                                            }
+                                        }
+                                    }).catch(function(error){
+                                        console.log(error);
+                                    }); 
+                                    
+                                }).catch(function(error){console.log(error)}); 
+                            }else{
+                                console.log("Patient is not in any cag");
+                            }
+                        }
+                        ).catch(function(error){
+                            console.error("CAG ERROR::No Cag Visit started for attender ",error);
+                        });
+                    }
+                    else{
+                        return spinner.forPromise($q.all([preSavePromise(), encounterService.getEncounterType($state.params.programUuid, sessionService.getLoginLocationUuid())])
+                        .then(function (results) {
+                            var encounterData = results[0];
+                            encounterData.encounterTypeUuid = results[1].uuid;
+                            var params = angular.copy($state.params);
+                            params.cachebuster = Math.random();
+                            console.log(results[0]);
+
+                            return encounterService.create(encounterData)
+                                .then(function (saveResponse) {
+                                    console.log(saveResponse,encounterService.findByEncounterUuid(saveResponse.data.encounterUuid));
+                                    var messageParams = { encounterUuid: saveResponse.data.encounterUuid, encounterType: saveResponse.data.encounterType };
+                                    auditLogService.log($scope.patient.uuid, "EDIT_ENCOUNTER", messageParams, "MODULE_LABEL_CLINICAL_KEY");
+                                    var consultationMapper = new Bahmni.ConsultationMapper(configurations.dosageFrequencyConfig(), configurations.dosageInstructionConfig(),
+                                        configurations.consultationNoteConcept(), configurations.labOrderNotesConcept(), $scope.followUpConditionConcept);
+                                    var consultation = consultationMapper.map(saveResponse.data);
+                                    consultation.lastvisited = $scope.lastvisited;
+                                    return consultation;
+                                }).then(function (savedConsultation) {
+                                    return spinner.forPromise(diagnosisService.populateDiagnosisInformation($scope.patient.uuid, savedConsultation)
+                                        .then(function (consultationWithDiagnosis) {
+                                            return saveConditions().then(function (savedConditions) {
+                                                consultationWithDiagnosis.conditions = savedConditions;
+                                                messagingService.showMessage('info', "{{'CLINICAL_SAVE_SUCCESS_MESSAGE_KEY' | translate}}");
+                                            }, function () {
+                                                consultationWithDiagnosis.conditions = $scope.consultation.conditions;
+                                            }).then(function () {
+                                                copyConsultationToScope(consultationWithDiagnosis);
+                                                console.log(copyConsultationToScope(consultationWithDiagnosis));
+                                                if ($scope.targetUrl) {
+                                                    return $window.open($scope.targetUrl, "_self");
+                                                }
+                                                return $state.transitionTo(toStateConfig ? toStateConfig.toState : $state.current, toStateConfig ? toStateConfig.toParams : params, {
+                                                    inherit: false,
+                                                    notify: true,
+                                                    reload: (toStateConfig !== undefined)
+                                                });
+                                            });
+                                        }));
+                                }).catch(function (error) {
+                                    var message = Bahmni.Clinical.Error.translate(error) || "{{'CLINICAL_SAVE_FAILURE_MESSAGE_KEY' | translate}}";
+                                    messagingService.showMessage('error', message);
+                                });
+                            }
+                        ));
+                    }
+                })
+                
+            };
+            var removeAttenderInOtherCagMember = function(patientVisitArray, patientToRemove) { 
+    
+                return patientVisitArray.filter(function(ele){ 
+                    return ele != patientToRemove; 
+                });
+            }
+            
+            var createCagEncounter = function(
+                 cagUuid
+                ,cagVisitUuid
+                ,cagEncounterDateTime
+                ,obsDateTime
+                ,nextCagEncounterDateValue
+                ,nextCagEncounterDateUuid
+                ,cagVisitLocation
+                ,attenderUuid
+                ,TypeOfClientTreatmentUuid
+                ,TypeOfClientTreatmentValue
+                ,AppointmentScheduledUuid
+                ,AppointmentScheduledValue
+                ,ARVDrugsSupplyDurationValue
+                ,ARVDrugsSupplyDurationUuid
+                ,ARVDrugsSupplyDurationName
+                ,DrugsDaysDispensedValue
+                ,DrugsDaysDispensedUuid
+                ,HIVCareWHOStagingValue
+                ,HIVCareWHOStagingUuid
+                ,CotrimoxazoleAdherenceValue
+                ,CotrimoxazoleAdherenceUuid
+                ,cotrimoxazoleNoOfDaysValue
+                ,cotrimoxazoleNoOfDaysUuid
+                ,provider
+                ,patientVisitData
+            ){
+                var orderAsDirected = {
+                    "instructions":"As directed"
+                };
+                var orderToString = JSON.stringify(orderAsDirected);
+                console.log("Order", orderToString);
+                var cagEncounterData = [];
+                
+                    console.log("data id : ",cagEncounterData);
+                    
+                    var autoExpireDate = Bahmni.Common.Util.DateUtil.addDays(cagEncounterDateTime,3);
+                    
+                    autoExpireDate = moment(autoExpireDate, "YYYY-MM-DDTHH:mm:ss.SSSZZ").format();
+                
+                    console.log("expiry date : ",autoExpireDate);
+
+                    var attenderEncounterData = [];
+                    
+                    for (let index = 0; index < patientVisitData.length; index++) {
+                        if (patientVisitData[index].patientUuid ==  attenderUuid) {
+                             
+                            var attenderData = {
+                                "encounterDatetime":  cagEncounterDateTime,
+                                "encounterType":{
+                                    "uuid": "81852aee-3f10-11e4-adec-0800271c1b75"
+                                },
+                                "patient": {
+                                    "uuid": attenderUuid
+                                },
+                                "visit": {
+                                     "uuid": patientVisitData[index].patientVisitUuid
+                                },
+                                "location":{
+                                    "uuid": cagVisitLocation 
+                                },
+                                // "orders":[
+                                //     {
+                                //         "type": "drugorder",
+                                //         "patient": patientVisitData[index].patientUuid ,
+                                //         "orderType": "131168f4-15f5-102d-96e4-000c29c2a5d7",
+                                //         "concept":  "9d155660-c16e-42d8-bff1-76cebe867e56",
+                                //         "dateActivated" : cagEncounterDateTime,
+                                //         "autoExpireDate" : autoExpireDate,
+                                //         "orderer" : provider, // should get the current logged Provider
+                                //         "urgency": "ON_SCHEDULED_DATE",
+                                //         "careSetting": "6f0c9a92-6f24-11e3-af88-005056821db0",
+                                //         "scheduledDate":  cagEncounterDateTime,
+                                //         "dose": 1,
+                                //         "doseUnits": "86239663-7b04-4563-b877-d7efc4fe6c46",
+                                //         "frequency": "9d7c32a2-3f10-11e4-adec-0800271c1b75",
+                                //         "quantity":  DrugsDaysDispensedValue,
+                                //         "quantityUnits": "86239663-7b04-4563-b877-d7efc4fe6c46",
+                                //          "drug": "189a5fc2-d29b-4ce5-b3ca-dc5405228bfc",
+                                //         "numRefills": 0,
+                                //         "dosingInstructions": "{\"instructions\":\"As directed\"}",
+                                //         "duration":  DrugsDaysDispensedValue,
+                                //         "durationUnits": "9d7437a9-3f10-11e4-adec-0800271c1b75",
+                                //         "route": "9d6bc13f-3f10-11e4-adec-0800271c1b75",
+                                //         "action": "NEW"
+                                //     }
+                                // ],
+                                "obs":[
+                                    {
+                                        "concept": {
+                                            "conceptId": 2403,
+                                            "uuid": "746818ac-65a0-4d74-9609-ddb2c330a31b" 
+                                        },
+                                        "obsDatetime": obsDateTime,
+                                        "person": attenderUuid,
+                                        "location":  cagVisitLocation,
+                                        "groupMembers": [
+                                            {
+                                                "concept": {
+                                                    "conceptId": 3753,
+                                                    "uuid": "65aa58be-3957-4c82-ad63-422637c8dd18"
+                                                },
+                                                "obsDatetime": obsDateTime,
+                                                "person": {
+                                                    "uuid": attenderUuid
+                                                },
+                                                "location":{
+                                                    "uuid": cagVisitLocation
+                                                },
+                                                "groupMembers": [
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3843,
+                                                            "uuid": "e0bc761d-ac3b-4033-92c7-476304b9c5e8"
+                                                        },
+                                                        "valueCoded": TypeOfClientTreatmentUuid,
+                                                        "valueCodedName": TypeOfClientTreatmentValue,
+                                                        "valueText":TypeOfClientTreatmentValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": attenderUuid
+                                                        },
+                                                        "location":{
+                                                            "uuid": cagVisitLocation
+                                                        } 
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3751,
+                                                            "uuid": "ed064424-0331-47f6-9532-77156f40a014"
+                                                        },
+                                                        "valueCoded": AppointmentScheduledValue,
+                                                        "valueCodedName": AppointmentScheduledValue,
+                                                        "valueText": AppointmentScheduledValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": attenderUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3752,
+                                                            "uuid": "88489023-783b-4021-b7a9-05ca9877bf67"
+                                                        },
+                                                        "valueDatetime": nextCagEncounterDateValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": attenderUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 2250,
+                                                            "uuid": "13382e01-9f18-488b-b2d2-58ab54c82d82"
+                                                        },
+                                                        "valueCoded": patientVisitData[index].patientRegimenUuid,
+                                                        "valueCodedName": patientVisitData[index].patientRegimen,
+                                                        "valueDrug": patientVisitData[index].patientRegimen,
+                                                        "obsDatetime":  obsDateTime,
+                                                        "person": {
+                                                            "uuid": attenderUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 4174,
+                                                            "uuid": "9eb00622-1078-4f7b-aa69-61e6c36db347"
+                                                        },
+                                                        "valueCoded":  ARVDrugsSupplyDurationUuid,
+                                                        "valueCodedName":  ARVDrugsSupplyDurationName,
+                                                        "valueText":  ARVDrugsSupplyDurationValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": attenderUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3730,
+                                                            "uuid": "27d55083-5e66-4b5a-91d3-2c9a42cc9996"
+                                                        },
+                                                        "valueNumeric":  DrugsDaysDispensedValue,
+                                                        "obsDatetime":  obsDateTime,
+                                                        "person": {
+                                                            "uuid":  attenderUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 2224,
+                                                            "uuid": "95e1fc28-84ab-4971-8bb1-d8ee68ef5739"
+                                                        },
+                                                        "valueCoded": HIVCareWHOStagingUuid,
+                                                        "valueCodedName": HIVCareWHOStagingValue,
+                                                        "valueText":HIVCareWHOStagingValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": attenderUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3726,
+                                                            "uuid": "e8d05f4a-9c3f-4f99-941c-596f238f095f"
+                                                        },
+                                                        "valueCoded": CotrimoxazoleAdherenceUuid,
+                                                        "valueCodedName": CotrimoxazoleAdherenceValue,
+                                                        "valueText": CotrimoxazoleAdherenceValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": attenderUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3728,
+                                                            "uuid": "3485a002-f72f-43fd-8ba7-0288273489da"
+                                                        },
+                                                        "valueNumeric":cotrimoxazoleNoOfDaysValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": attenderUuid
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }            
+                                ]
+                            };
+                            cagEncounterData.push(attenderData)
+                            console.log("attenderEncounterData : ",attenderEncounterData);
+                        }else if(patientVisitData[index].patientUuid != attenderUuid){
+                            // Exclude the attender from the list of cagVisits
+                            //removeAttenderInOtherCagMember();
+                            var otherCagMemberData =     {
+                                "encounterDatetime": cagEncounterDateTime,
+                                "encounterType":{
+                                    "uuid": "81852aee-3f10-11e4-adec-0800271c1b75"
+                                },
+                                "patient": {
+                                    "uuid": patientVisitData[index].patientUuid
+                                },
+                                "visit": {
+                                    "uuid":  patientVisitData[index].patientVisitUuid
+                                },
+                                "location":{
+                                    "uuid": cagVisitLocation
+                                },
+                                // "orders":[
+                                //     {
+                                //         "type": "drugorder",
+                                //         "patient":  patientVisitData[index].patientUuid,
+                                //         "orderType": "131168f4-15f5-102d-96e4-000c29c2a5d7",
+                                //         "concept": "9d155660-c16e-42d8-bff1-76cebe867e56",
+                                //         "dateActivated" : cagEncounterDateTime,
+                                //         "autoExpireDate" : autoExpireDate,
+                                //         "orderer" : provider,
+                                //         "urgency": "ON_SCHEDULED_DATE",
+                                //         "careSetting": "6f0c9a92-6f24-11e3-af88-005056821db0",
+                                //         "scheduledDate": cagEncounterDateTime,
+                                //         "dose": 1,
+                                //         "doseUnits": "86239663-7b04-4563-b877-d7efc4fe6c46",
+                                //         "frequency": "9d7c32a2-3f10-11e4-adec-0800271c1b75",
+                                //         "quantity": 30.0,
+                                //         "quantityUnits": "86239663-7b04-4563-b877-d7efc4fe6c46",
+                                //         "drug": "189a5fc2-d29b-4ce5-b3ca-dc5405228bfc",
+                                //         "numRefills": 0,
+                                //         "dosingInstructions": "{\"instructions\":\"As directed\"}",
+                                //         "duration": 30,
+                                //         "durationUnits": "9d7437a9-3f10-11e4-adec-0800271c1b75",
+                                //         "route": "9d6bc13f-3f10-11e4-adec-0800271c1b75",
+                                //         "action": "NEW"
+                                //     }
+                                // ],
+                                "obs":[
+                                    {
+                                        "concept": {
+                                            "conceptId": 2403,
+                                            "uuid": "746818ac-65a0-4d74-9609-ddb2c330a31b"
+                                        },
+                                        "obsDatetime": obsDateTime,
+                                        "person":  patientVisitData[index].patientUuid,
+                                        "location": cagVisitLocation,
+                                        "groupMembers": [
+                                            {
+                                                "concept": {
+                                                    "conceptId": 3753,
+                                                    "uuid": "65aa58be-3957-4c82-ad63-422637c8dd18"
+                                                },
+                                                "obsDatetime": obsDateTime,
+                                                "person": {
+                                                    "uuid":  patientVisitData[index].patientUuid
+                                                },
+                                                "location":{
+                                                    "uuid": cagVisitLocation
+                                                },
+                                                "groupMembers": [
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3843,
+                                                            "uuid": "e0bc761d-ac3b-4033-92c7-476304b9c5e8"
+                                                        },
+                                                        "valueCoded": "0f880c52-3ced-43ac-a79b-07a2740ae428",
+                                                        "valueCodedName": "Treatment Buddy",
+                                                        "valueText": "Treatment Buddy",
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": patientVisitData[index].patientUuid
+                                                        },
+                                                        "location":{
+                                                            "uuid": cagVisitLocation
+                                                        } 
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3751,
+                                                            "uuid": "ed064424-0331-47f6-9532-77156f40a014"
+                                                        },
+                                                        "valueCoded": AppointmentScheduledValue,
+                                                        "valueCodedName": AppointmentScheduledValue,
+                                                        "valueText": AppointmentScheduledValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid":  patientVisitData[index].patientUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3752,
+                                                            "uuid": "88489023-783b-4021-b7a9-05ca9877bf67"
+                                                        },
+                                                        "valueDatetime": nextCagEncounterDateValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid":  patientVisitData[index].patientUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 2250,
+                                                            "uuid": "13382e01-9f18-488b-b2d2-58ab54c82d82"
+                                                        },                                                       
+                                                        "valueCoded": patientVisitData[index].patientRegimenUuid,
+                                                        "valueCodedName": patientVisitData[index].patientRegimen,
+                                                        "valueDrug": patientVisitData[index].patientRegimen,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid":  patientVisitData[index].patientUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 4174,
+                                                            "uuid": "9eb00622-1078-4f7b-aa69-61e6c36db347"
+                                                        },
+                                                        "valueCoded": ARVDrugsSupplyDurationUuid,
+                                                        "valueCodedName": ARVDrugsSupplyDurationName,
+                                                        "valueText": ARVDrugsSupplyDurationValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": patientVisitData[index].patientUuid
+                                                        }
+                                                    },
+                                                    {
+                                                        "concept": {
+                                                            "conceptId": 3730,
+                                                            "uuid": "27d55083-5e66-4b5a-91d3-2c9a42cc9996"
+                                                        },
+                                                        "valueNumeric": DrugsDaysDispensedValue,
+                                                        "obsDatetime": obsDateTime,
+                                                        "person": {
+                                                            "uuid": patientVisitData[index].patientUuid
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }            
+                                ]
+                            }
+                           
+                            cagEncounterData.push(otherCagMemberData);
+                            
+                        }
+                        console.log("otherCagMemberData : ",cagEncounterData)
+                    } 
+                     
+                    var encounterData={
+                        cag:{
+                            uuid: cagUuid
+                        },       
+                        cagVisit: {
+                            uuid: cagVisitUuid
+                        },
+                        cagEncounterDateTime:  cagEncounterDateTime, 
+                        nextEncounterDate: nextCagEncounterDateValue, 
+                        location: {
+                            uuid:  cagVisitLocation  
+                        },
+                        attender: {
+                            uuid:  attenderUuid  
+                        },
+                        encounters:cagEncounterData
+
+                    }    
+                    console.log(encounterData);    
+                    
+                    var cagEncounter = appService.createCagEncounter(encounterData);
+                    
+                    return cagEncounter;
+                
+            }
             initialize();
         }]);
 
@@ -19689,6 +20779,17 @@ angular.module('bahmni.clinical')
                 });
                 return forms;
             };
+
+            $scope.gender = $scope.patient.gender;
+
+            $scope.MCHForms = [
+                "Nursery Register",
+                "Gynaecology Register",
+                "PNC, Register",
+                "Cervical Cancer Screening Register",
+                "ANC Program",
+                "Labour and Delivery Register"
+            ]
             // Form Code :: End
             init();
         }]);
