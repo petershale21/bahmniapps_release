@@ -599,16 +599,16 @@ angular.module('bahmni.common.appFramework')
                     headers: {"Accept": "application/json", "Content-Type": "application/json"}
                 });
             };
-           // checkinh visit type data from API - senekanet
-           this.getIsCAGVisitType = function (limit) {
-                var cag = $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/visit?limit="+limit, {
+           // getting visit data by uuid from API - senekanet
+            this.fetchingVisitDatabyUuid = function (uuid) {
+                return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/visit/"+uuid, {
                     method: "GET", 
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     withCredentials: true
                 });
-                return cag;
+                
             };
 
            this.getAllCags = function () {
@@ -2400,87 +2400,6 @@ Bahmni.Common.Domain.Diagnosis = function (codedAnswer, order, certainty, existi
 
 'use strict';
 
-(function () {
-    var DateUtil = Bahmni.Common.Util.DateUtil;
-    var Conditions = Bahmni.Common.Domain.Conditions = {};
-    var Condition = Bahmni.Common.Domain.Condition = function (data) {
-        data = data || {};
-        this.uuid = data.uuid;
-        this.concept = {
-            uuid: _.get(data, 'concept.uuid'),
-            shortName: _.get(data, 'concept.shortName'),
-            name: _.get(data, 'concept.name')
-        };
-        this.status = data.status;
-        this.onSetDate = data.onSetDate;
-        this.conditionNonCoded = data.conditionNonCoded;
-        this.voided = data.voided;
-        this.additionalDetail = data.additionalDetail;
-        this.isNonCoded = data.isNonCoded;
-        this.creator = data.creator;
-        this.previousConditionUuid = data.previousConditionUuid;
-        this.activeSince = data.onSetDate;
-    };
-    Condition.prototype = {};
-    Condition.prototype.toggleNonCoded = function () {
-        this.isNonCoded = !this.isNonCoded;
-    };
-    Condition.prototype.clearConcept = function () {
-        this.concept.uuid = undefined;
-    };
-    Condition.prototype.isValidConcept = function () {
-        return !(this.concept.name && !this.concept.uuid && !this.isNonCoded);
-    };
-    Condition.prototype.isValid = function () {
-        return this.status && ((this.concept.name && this.isNonCoded) || this.concept.uuid);
-    };
-    Condition.prototype.isActive = function () {
-        return this.status == 'ACTIVE';
-    };
-    Condition.prototype.displayString = function () {
-        return this.conditionNonCoded || this.concept.shortName || this.concept.name;
-    };
-    Condition.prototype.isEmpty = function () {
-        return !this.status && !this.concept.name && !(this.isNonCoded || this.concept.uuid)
-            && !this.onSetDate && !this.additionalDetail;
-    };
-
-    Condition.createFromDiagnosis = function (diagnosis) {
-        return new Condition({
-            concept: {
-                uuid: diagnosis.codedAnswer.uuid,
-                shortName: diagnosis.codedAnswer.shortName,
-                name: diagnosis.codedAnswer.name
-            },
-            status: 'ACTIVE',
-            onSetDate: DateUtil.today(),
-            conditionNonCoded: diagnosis.freeTextAnswer,
-            additionalDetail: diagnosis.comments,
-            voided: false
-        });
-    };
-
-    Conditions.fromConditionHistories = function (conditionsHistories) {
-        return _.map(conditionsHistories, function (conditionsHistory) {
-            var conditions = conditionsHistory.conditions;
-            return new Condition(_.last(_.sortBy(_.reject(conditions, 'endDate'), 'onSetDate')));
-        });
-    };
-
-    Conditions.getPreviousActiveCondition = function (condition, allConditions) {
-        if (condition.status == 'ACTIVE') {
-            return condition;
-        }
-        var previousCondition = _.find(allConditions, {uuid: condition.previousConditionUuid});
-        if (!previousCondition) {
-            return condition;
-        }
-        return Conditions.getPreviousActiveCondition(previousCondition, allConditions);
-    };
-})();
-
-'use strict';
-
 angular.module('bahmni.common.domain')
     .service('retrospectiveEntryService', ['$rootScope', '$bahmniCookieStore', function ($rootScope, $bahmniCookieStore) {
         var retrospectiveEntryService = this;
@@ -2573,71 +2492,6 @@ angular.module('bahmni.common.domain')
                 consultation.pastDiagnoses = diagnosis.pastDiagnoses;
                 consultation.savedDiagnosesFromCurrentEncounter = diagnosis.savedDiagnosesFromCurrentEncounter;
                 return consultation;
-            });
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.common.domain')
-    .service('conditionsService', ['$http', function ($http) {
-        this.save = function (conditions, patientUuid) {
-            var body = _.map(conditions, function (condition) {
-                return {
-                    uuid: condition.uuid,
-                    patientUuid: patientUuid,
-                    concept: condition.concept,
-                    conditionNonCoded: condition.conditionNonCoded,
-                    status: condition.status,
-                    onSetDate: condition.onSetDate,
-                    endDate: condition.endDate,
-                    endReason: condition.endReason,
-                    additionalDetail: condition.additionalDetail,
-                    voided: condition.voided,
-                    voidReason: condition.voidReason
-                };
-            });
-
-            return $http.post(Bahmni.Common.Constants.conditionUrl, body, {
-                withCredentials: true,
-                headers: {"Accept": "application/json", "Content-Type": "application/json"}
-            });
-        };
-        this.getConditionHistory = function (patientUuid) {
-            var params = {
-                patientUuid: patientUuid
-            };
-            return $http.get(Bahmni.Common.Constants.conditionHistoryUrl, {
-                params: params,
-                headers: {
-                    withCredentials: true
-                }
-            });
-        };
-        this.getFollowUpConditionConcept = function () {
-            return $http.get(Bahmni.Common.Constants.conceptSearchByFullNameUrl, {
-                params: {
-                    name: Bahmni.Common.Constants.followUpConditionConcept,
-                    v: "custom:(uuid,name:(name))"
-                },
-                cache: true
-            });
-        };
-        var getLatestActiveCondition = function (conditionHistories, latestCondition) {
-            var conditionHistory = _.find(conditionHistories, {
-                conceptUuid: latestCondition.concept.uuid,
-                conditionNonCoded: latestCondition.conditionNonCoded
-            });
-            return Bahmni.Common.Domain.Conditions.getPreviousActiveCondition(latestCondition, conditionHistory.conditions);
-        };
-        this.getConditions = function (patientUuid) {
-            return this.getConditionHistory(patientUuid).then(function (response) {
-                var conditionHistories = response.data;
-                var conditions = Bahmni.Common.Domain.Conditions.fromConditionHistories(conditionHistories);
-                _.forEach(conditions, function (condition) {
-                    condition.activeSince = getLatestActiveCondition(conditionHistories, condition).onSetDate;
-                });
-                return conditions;
             });
         };
     }]);
@@ -3272,6 +3126,44 @@ angular.module('bahmni.common.domain')
                 params: params,
                 withCredentials: true
             });
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.common.domain')
+    .factory('locationService', ['$http', '$bahmniCookieStore', function ($http, $bahmniCookieStore) {
+        var getAllByTag = function (tags, operator) {
+            return $http.get(Bahmni.Common.Constants.locationUrl, {
+                params: {s: "byTags", tags: tags || "", v: "default", operator: operator || "ALL"},
+                cache: true
+            });
+        };
+
+        var getByUuid = function (locationUuid) {
+            return $http.get(Bahmni.Common.Constants.locationUrl + "/" + locationUuid, {
+                cache: true
+            }).then(function (response) {
+                return response.data;
+            });
+        };
+
+        var getLoggedInLocation = function () {
+            var cookie = $bahmniCookieStore.get(Bahmni.Common.Constants.locationCookieName);
+            return getByUuid(cookie.uuid);
+        };
+
+        var getVisitLocation = function (locationUuid) {
+            return $http.get(Bahmni.Common.Constants.bahmniVisitLocationUrl + "/" + locationUuid, {
+                headers: {"Accept": "application/json"}
+            });
+        };
+
+        return {
+            getAllByTag: getAllByTag,
+            getLoggedInLocation: getLoggedInLocation,
+            getByUuid: getByUuid,
+            getVisitLocation: getVisitLocation
         };
     }]);
 
@@ -6912,11 +6804,9 @@ angular.module('bahmni.common.patientSearch')
     function ($scope, $window, patientService, $rootScope, appService, spinner, $stateParams, $bahmniCookieStore, printer, configurationService, $q) {
         const DEFAULT_FETCH_DELAY = 2000;
         var patientSearchConfig = appService.getAppDescriptor().getConfigValue("patientSearch");
-        console.log(patientSearchConfig);
         var patientListSpinner;
-        $scope.activeVisits = [];
-        $scope.otherCagMemberList=[];
-        $scope.totalqueueLimit=0;
+        $scope.otherCagMember=[];
+        $scope.cagname={};
         var initialize = function () {
             // $scope.cagLoad=1;
             var searchTypes = appService.getAppDescriptor().getExtensions("org.bahmni.patient.search", "config").map(mapExtensionToSearchType);
@@ -6924,18 +6814,6 @@ angular.module('bahmni.common.patientSearch')
             $scope.search.markPatientEntry();
             $scope.$watch('search.searchType', function (currentSearchType) {
                 _.isEmpty(currentSearchType) || fetchPatients(currentSearchType);
-                console.log($scope.search.searchTypes);
-                console.log(getPatientCount($scope.search.searchTypes[0], null));
-            });
-            $scope.$watch('search.activePatients', function () {
-                if ($scope.search.activePatients.length > 0 && $scope.search.activePatients[0].activeVisitUuid) {
-                    $scope.totalqueueLimit=$scope.search.searchTypes[0].patientCount;
-                    console.log("active === ", $scope.search.activePatients, "searchtypes ===",$scope.search);
-                    // if($scope.search.activePatients)
-                    $scope.isCagType($scope.totalqueueLimit);
-                    $scope.otherCagMemberList=[];
-                    hideSpinner(spinner, patientListSpinner, $(".tab-content"));
-                }
             });
             if (patientSearchConfig && patientSearchConfig.serializeSearch) {
                 getPatientCountSeriallyBySearchIndex(0);
@@ -6952,108 +6830,69 @@ angular.module('bahmni.common.patientSearch')
                 $scope.primaryIdentifier = _.find(response.identifierTypesConfig, {primary: true}).name;
             });
         };
-
-        $scope.isCagVisit = function(uuid, activePatientsUuid, index){
-            var deferred = $q.defer();
-            appService.getCagPatient(uuid).then(function(response){
-                console.log(response);
-                var res={
-                    "status" : false,
-                    "index" : index,
-                    "cagName":undefined,
-                    "otherMemberList":[]
+        
+        $scope.searchotherCagMembers = function(key){
+            for(var i=0;i<$scope.otherCagMember.length;i++){
+                if(key==$scope.otherCagMember.member_uuid){
+                    return 1;
                 }
-                if(response.data.results.length > 0){
-                    if(response.data.results[response.data.results.length-1].attender.uuid==activePatientsUuid) {
-                        res.status=true;
-                        res.cagName=response.data.results[response.data.results.length-1].cag.name;
-                        res.otherMemberList=response.data.results[response.data.results.length-1].visits;
-                        deferred.resolve(res);
-                    }
-                    else deferred.resolve(res);
-                }
-                else deferred.resolve(res);
-                deferred.resolve();
-            })
-            return deferred.promise;
+            }
+            return 0;
         }
-
-        $scope.isCagType = function(limit){
-            showSpinner(spinner, $(".tab-content"));
-            console.log($scope.search);
-            
-            appService.getIsCAGVisitType(limit).then(function(response){
-                $scope.activeVisits = response.data.results;
-
-                console.log($scope.activeVisits);
-                for(var i=0;i<limit;i++){
-                    console.log(limit);
-                    var found = 0;
-                    var uuid = "";
-                    for(var j=0; j < $scope.activeVisits.length; j++){
-                        try{
-                            console.log($scope.search.activePatients[i].activeVisitUuid,$scope.activeVisits[j].uuid,$scope.activeVisits[j].display);
-                            if($scope.search.activePatients[i].activeVisitUuid == $scope.activeVisits[j].uuid && $scope.activeVisits[j].display.substring(0,3)=="CAG"){
-                                $scope.search.activePatients[i]['showIsCag'] = true;
-                                $scope.search.activePatients[i]['presentMember'] = false;
-                                $scope.search.activePatients[i]['cagName'] = "";
-                                found=1;
-                                j=$scope.activeVisits.length;
-                                uuid=$scope.search.activePatients[i].uuid;
-                                console.log($scope.search.activePatients);
-                                console.log(i,);
-                            }
-                        }catch (Exception) {
-                            // console.error(`Couldn't insert card ${x}`);
-                          }
-                        
+        $scope.isCagVisit = function(patientx,index) {
+            if(patientx.activeVisitUuid!=null){
+                appService.fetchingVisitDatabyUuid(patientx.activeVisitUuid).then(function(res) {
+                    if(res.data.display){
+                        if(res.data.display.substring(0,3)=="CAG"){
+                            patientx['showIsCag'] = true;
+                            patientx['presentMember'] = false;
+                            // patientx['cagName'] = "";
+                            appService.getCagVisit(patientx.uuid).then(function(response){
+                                if(response.data.results && response.data.results.length>0){
+                                    if(response.data.results[0].attender.uuid==patientx.uuid){
+                                        patientx['presentMember'] = true;
+                                        patientx['cagName'] = response.data.results[0].cag.name;
+                                    }
+                                    for (let i = 0; i < response.data.results[0].visits.length; i++) {
+                                        if(patientx.uuid!=response.data.results[0].visits[i].patient.uuid){
+                                            if(!$scope.cagname.hasOwnProperty(patientx.uuid)){
+                                                $scope.cagname[response.data.results[0].visits[i].patient.uuid]=response.data.results[0].cag.name;
+                                            }
+                                        }                                    
+                                    }
+                                }
+                                else if(response.data.results && response.data.results.length==0){
+                                    var member={
+                                        "member_uuid":patientx.uuid,
+                                        "index":index
+                                    }
+                                    if($scope.searchotherCagMembers(patientx.uuid)==0){
+                                        $scope.otherCagMember.push(member);
+                                    }
+                                }
+                                for(var i=0;i<$scope.otherCagMember.length;i++){
+                                    if($scope.otherCagMember[i].member_uuid!=undefined && $scope.otherCagMember[i].index!=undefined && $scope.search.visiblePatients[$scope.otherCagMember[i].index]!=undefined){
+                                        if($scope.cagname.hasOwnProperty($scope.otherCagMember[i].member_uuid)){
+                                            var x=$scope.otherCagMember[i].member_uuid
+                                            $scope.search.visiblePatients[$scope.otherCagMember[i].index]['cagName']=$scope.cagname[x];
+                                        }
+                                    }
+                                }
+                            });
+                        }
                     }
-                    
-                    if(uuid!=""){
-                        var pos=i;
-                        $q.all([$scope.isCagVisit(uuid, $scope.search.activePatients[i].uuid, pos)]).then(function(res){
-                            if(res){
-                                console.log(res[0],i,$scope.otherCagMemberList);
-                                if(res[0].status)   $scope.search.activePatients[res[0].index].presentMember = res[0].status;
-                                if(res[0].cagName!=undefined)  $scope.search.activePatients[res[0].index].cagName = res[0].cagName;
-                                if(res[0].otherMemberList.length==0)  $scope.otherCagMemberList.push({"uuid":$scope.search.activePatients[res[0].index].uuid,"index":res[0].index}) 
-                                // for (let k = 0; k < $scope.otherCagMemberList.length; k++) {
-                                //     console.log( $scope.otherCagMemberList, k,res[0].otherMemberList,$scope.search.activePatients );
-                                //     for(let j=0; j<res[0].otherMemberList.length; j++){
-                                //         if( $scope.otherCagMemberList[k].uuid== res[0].otherMemberList[j].patient.uuid) {
-                                //             console.log( $scope.otherCagMemberList, k,$scope.search.activePatients ,res[0].cagname,$scope.otherCagMemberList[k].index);
-                                //             $scope.search.activePatients[$scope.otherCagMemberList[k].index].cagName = $scope.search.activePatients[res[0].index].cagName;
-                                        
-                                //         }  
-                                //     } 
-                                // }
-
-                                // for(let j=0; j<res[0].otherMemberList.length; j++){
-                                //     for (let k = 0; k < $scope.search.activePatients.length; k++) {
-                                //         // console.log( $scope.otherCagMemberList, k,res[0].otherMemberList,$scope.search.activePatients );
-                                    
-                                //         if( $scope.search.activePatients[k].uuid== res[0].otherMemberList[j].patient.uuid && $scope.search.activePatients[k].cagName=="") {
-                                //             // console.log( $scope.otherCagMemberList, k,$scope.search.activePatients ,res[0].cagname,$scope.otherCagMemberList[k].index);
-                                //             $scope.search.activePatients[k].cagName = res[0].cagName;
-                                        
-                                //         }  
-                                //     } 
-                                // }
-                            }
-                            // $scope.cagLoad=0;
-                        })
-                    }
-                }
-                console.log($scope.search.activePatients);
-            });
-           
+                }) 
+            }
         }
         
         $scope.searchPatients = function () {
             return spinner.forPromise(patientService.search($scope.search.searchParameter)).then(function (response) {
                 $scope.search.updateSearchResults(response.data.pageOfResults);
-                if ($scope.search.hasSingleActivePatient()) {
-                    $scope.forwardPatient($scope.search.activePatients[0]);
+                // if ($scope.search.hasSingleActivePatient() ) {
+                if (response.data.pageOfResults.length==1) {
+                    if( response.data.pageOfResults[0].presentMember==true){
+                        $scope.forwardPatient($scope.search.activePatients[0]);
+                    }
                 }
             });
         };
@@ -7969,6 +7808,23 @@ angular.module('bahmni.common.uiHelper')
     });
 
 'use strict';
+
+angular.module('bahmni.common.uiHelper')
+    .directive('compileHtml', ['$compile', function ($compile) {
+        return function (scope, element, attrs) {
+            scope.$watch(
+                function (scope) {
+                    return scope.$eval(attrs.compileHtml);
+                },
+                function (value) {
+                    element.html(value);
+                    $compile(element.contents())(scope);
+                }
+            );
+        };
+    }]);
+
+'use strict';
 var Bahmni = Bahmni || {};
 Bahmni.Common = Bahmni.Common || {};
 Bahmni.Common.Logging = Bahmni.Common.Logging || {};
@@ -8032,45 +7888,6 @@ angular.module('bahmni.common.logging')
             log: log
         };
     });
-
-'use strict';
-angular.module('bahmni.common.logging')
-    .service('auditLogService', ['$http', '$translate', 'configurationService', function ($http, $translate, configurationService) {
-        var DateUtil = Bahmni.Common.Util.DateUtil;
-
-        var convertToLocalDate = function (date) {
-            var localDate = DateUtil.parseLongDateToServerFormat(date);
-            return DateUtil.getDateTimeInSpecifiedFormat(localDate, 'MMMM Do, YYYY [at] h:mm:ss A');
-        };
-
-        this.getLogs = function (params) {
-            params = params || {};
-            return $http.get(Bahmni.Common.Constants.auditLogUrl, {params: params}).then(function (response) {
-                return response.data.map(function (log) {
-                    log.dateCreated = convertToLocalDate(log.dateCreated);
-                    var entity = log.message ? log.message.split("~")[1] : undefined;
-                    log.params = entity ? JSON.parse(entity) : entity;
-                    log.message = log.message.split("~")[0];
-                    log.displayMessage = $translate.instant(log.message, log);
-                    return log;
-                });
-            });
-        };
-
-        this.log = function (patientUuid, eventType, messageParams, module) {
-            return configurationService.getConfigurations(['enableAuditLog']).then(function (result) {
-                if (result.enableAuditLog) {
-                    var params = {};
-                    params.patientUuid = patientUuid;
-                    params.eventType = Bahmni.Common.AuditLogEventDetails[eventType].eventType;
-                    params.message = Bahmni.Common.AuditLogEventDetails[eventType].message;
-                    params.message = messageParams ? params.message + '~' + JSON.stringify(messageParams) : params.message;
-                    params.module = module;
-                    return $http.post(Bahmni.Common.Constants.auditLogUrl, params, {withCredentials: true});
-                }
-            });
-        };
-    }]);
 
 var Bahmni = Bahmni || {};
 Bahmni.Common = Bahmni.Common || {};
@@ -8774,6 +8591,172 @@ angular.module('bahmni.common.displaycontrol.observation', ['bahmni.common.conce
 'use strict';
 
 angular.module('bahmni.common.displaycontrol.observation')
+    .service('formHierarchyService', ['formService', function (formService) {
+        var self = this;
+
+        self.build = function (observations) {
+            var obs = self.preProcessMultipleSelectObsToObs(observations);
+            obs = self.createDummyObsGroupForObservationsForForm(obs);
+            self.createDummyObsGroupForSectionsForForm(obs);
+        };
+
+        self.preProcessMultipleSelectObsToObs = function (observations) {
+            _.forEach(observations, function (obs) {
+                _.forEach(obs.value, function (value, index) {
+                    if (value.type == "multiSelect") {
+                        obs.value.push(value.groupMembers[0]);
+                        obs.value.splice(index, 1);
+                    }
+                });
+            });
+            return observations;
+        };
+
+        self.createDummyObsGroupForObservationsForForm = function (observations) {
+            _.forEach(observations, function (obs) {
+                var newValues = [];
+                _.forEach(obs.value, function (value) {
+                    if (!value.formFieldPath) {
+                        newValues.push(value);
+                        return;
+                    }
+
+                    var dummyObsGroup = {
+                        "groupMembers": [],
+                        "concept": {
+                            "shortName": "",
+                            "conceptClass": null
+                        },
+                        "encounterUuid": ""
+                    };
+
+                    dummyObsGroup.concept.shortName = value.formFieldPath.split('.')[0];
+                    dummyObsGroup.encounterUuid = value.encounterUuid;
+                    var previousDummyObsGroupFound;
+                    _.forEach(newValues, function (newValue) {
+                        if (dummyObsGroup.concept.shortName == newValue.concept.shortName) {
+                            newValue.groupMembers.push(value);
+                            previousDummyObsGroupFound = true;
+                        }
+                    });
+
+                    if (previousDummyObsGroupFound) {
+                        return;
+                    }
+
+                    dummyObsGroup.groupMembers.push(value);
+                    newValues.push(dummyObsGroup);
+                });
+
+                obs.value = newValues;
+            });
+
+            return observations;
+        };
+
+        self.getFormVersion = function (members) {
+            var formVersion;
+            _.forEach(members, function (member) {
+                if (member.formFieldPath) {
+                    formVersion = member.formFieldPath.split('.')[1].split('/')[0];
+                    return false;
+                }
+            });
+            return formVersion;
+        };
+
+        self.getMemberFromFormByFormFieldPath = function (members, id) {
+            return _.filter(members, function (member) {
+                return member.formFieldPath.split('.')[1].split('/')[1].split('-')[0] == id;
+            });
+        };
+
+        self.getFormByFormName = function (formList, formName, formVersion) {
+            return _.find(formList, function (form) {
+                return form.name == formName && form.version == formVersion;
+            });
+        };
+
+        self.parseSection = function (members, controls, value) {
+            var sectionIsEmpty = true;
+            _.forEach(controls, function (control) {
+                var dummyObsGroup = {
+                    "groupMembers": [],
+                    "concept": {
+                        "shortName": "",
+                        "conceptClass": null
+                    }
+                };
+                if (control.type == "section") {
+                    dummyObsGroup.concept.shortName = control.label.value;
+                    value.groupMembers.push(dummyObsGroup);
+                    if (!self.parseSection(members, control.controls, dummyObsGroup)) {
+                        value.groupMembers.pop();
+                    } else {
+                        sectionIsEmpty = false;
+                    }
+                } else {
+                    var member = self.getMemberFromFormByFormFieldPath(members, control.id);
+                    if (member.length != 0) {
+                        if (member[0].formFieldPath.split('-')[1] != 0) {
+                            _.reverse(member);
+                        }
+                        _.map(member, function (m) {
+                            value.groupMembers.push(m);
+                        });
+                        sectionIsEmpty = false;
+                    }
+                }
+            });
+            if (sectionIsEmpty) {
+                return null;
+            }
+            return value;
+        };
+
+        self.createSectionForSingleForm = function (obsFromSameForm, formDetails) {
+            var members = obsFromSameForm.groupMembers.slice();
+            obsFromSameForm.groupMembers.splice(0, obsFromSameForm.groupMembers.length);
+
+            return self.parseSection(members, formDetails.controls, obsFromSameForm);
+        };
+
+        self.createDummyObsGroupForSectionsForForm = function (bahmniObservations) {
+            if (_.isEmpty(bahmniObservations)) {
+                return;
+            }
+
+            formService.getAllForms().then(function (response) {
+                var allForms = response.data;
+                _.forEach(bahmniObservations, function (observation) {
+                    var forms = [];
+                    _.forEach(observation.value, function (form) {
+                        if (form.concept.conceptClass) {
+                            forms.push(form);
+                            return;
+                        }
+                        var observationForm = self.getFormByFormName(allForms, form.concept.shortName, self.getFormVersion(form.groupMembers));
+                        if (!observationForm) {
+                            return;
+                        }
+                        formService.getFormDetail(observationForm.uuid, { v: "custom:(resources:(value))"}).then(function (response) {
+                            var formDetailsAsString = _.get(response, 'data.resources[0].value');
+                            if (formDetailsAsString) {
+                                var formDetails = JSON.parse(formDetailsAsString);
+                                forms.push(self.createSectionForSingleForm(form, formDetails));
+                            }
+                            observation.value = forms;
+                        });
+                    });
+                });
+            });
+        };
+    }
+    ]);
+
+'use strict';
+
+angular.module('bahmni.common.displaycontrol.observation')
     .directive('bahmniObservation', ['observationsService', 'appService', '$q', 'spinner', '$rootScope', 'formHierarchyService', '$translate',
         function (observationsService, appService, $q, spinner, $rootScope, formHierarchyService, $translate) {
             var controller = function ($scope) {
@@ -8958,203 +8941,6 @@ Bahmni.Common.DisplayControl.Observation.GroupingFunctions = function () {
 };
 
 'use strict';
-
-angular.module('bahmni.common.displaycontrol.observation')
-    .service('formHierarchyService', ['formService', function (formService) {
-        var self = this;
-
-        self.build = function (observations) {
-            var obs = self.preProcessMultipleSelectObsToObs(observations);
-            obs = self.createDummyObsGroupForObservationsForForm(obs);
-            self.createDummyObsGroupForSectionsForForm(obs);
-        };
-
-        self.preProcessMultipleSelectObsToObs = function (observations) {
-            _.forEach(observations, function (obs) {
-                _.forEach(obs.value, function (value, index) {
-                    if (value.type == "multiSelect") {
-                        obs.value.push(value.groupMembers[0]);
-                        obs.value.splice(index, 1);
-                    }
-                });
-            });
-            return observations;
-        };
-
-        self.createDummyObsGroupForObservationsForForm = function (observations) {
-            _.forEach(observations, function (obs) {
-                var newValues = [];
-                _.forEach(obs.value, function (value) {
-                    if (!value.formFieldPath) {
-                        newValues.push(value);
-                        return;
-                    }
-
-                    var dummyObsGroup = {
-                        "groupMembers": [],
-                        "concept": {
-                            "shortName": "",
-                            "conceptClass": null
-                        },
-                        "encounterUuid": ""
-                    };
-
-                    dummyObsGroup.concept.shortName = value.formFieldPath.split('.')[0];
-                    dummyObsGroup.encounterUuid = value.encounterUuid;
-                    var previousDummyObsGroupFound;
-                    _.forEach(newValues, function (newValue) {
-                        if (dummyObsGroup.concept.shortName == newValue.concept.shortName) {
-                            newValue.groupMembers.push(value);
-                            previousDummyObsGroupFound = true;
-                        }
-                    });
-
-                    if (previousDummyObsGroupFound) {
-                        return;
-                    }
-
-                    dummyObsGroup.groupMembers.push(value);
-                    newValues.push(dummyObsGroup);
-                });
-
-                obs.value = newValues;
-            });
-
-            return observations;
-        };
-
-        self.getFormVersion = function (members) {
-            var formVersion;
-            _.forEach(members, function (member) {
-                if (member.formFieldPath) {
-                    formVersion = member.formFieldPath.split('.')[1].split('/')[0];
-                    return false;
-                }
-            });
-            return formVersion;
-        };
-
-        self.getMemberFromFormByFormFieldPath = function (members, id) {
-            return _.filter(members, function (member) {
-                return member.formFieldPath.split('.')[1].split('/')[1].split('-')[0] == id;
-            });
-        };
-
-        self.getFormByFormName = function (formList, formName, formVersion) {
-            return _.find(formList, function (form) {
-                return form.name == formName && form.version == formVersion;
-            });
-        };
-
-        self.parseSection = function (members, controls, value) {
-            var sectionIsEmpty = true;
-            _.forEach(controls, function (control) {
-                var dummyObsGroup = {
-                    "groupMembers": [],
-                    "concept": {
-                        "shortName": "",
-                        "conceptClass": null
-                    }
-                };
-                if (control.type == "section") {
-                    dummyObsGroup.concept.shortName = control.label.value;
-                    value.groupMembers.push(dummyObsGroup);
-                    if (!self.parseSection(members, control.controls, dummyObsGroup)) {
-                        value.groupMembers.pop();
-                    } else {
-                        sectionIsEmpty = false;
-                    }
-                } else {
-                    var member = self.getMemberFromFormByFormFieldPath(members, control.id);
-                    if (member.length != 0) {
-                        if (member[0].formFieldPath.split('-')[1] != 0) {
-                            _.reverse(member);
-                        }
-                        _.map(member, function (m) {
-                            value.groupMembers.push(m);
-                        });
-                        sectionIsEmpty = false;
-                    }
-                }
-            });
-            if (sectionIsEmpty) {
-                return null;
-            }
-            return value;
-        };
-
-        self.createSectionForSingleForm = function (obsFromSameForm, formDetails) {
-            var members = obsFromSameForm.groupMembers.slice();
-            obsFromSameForm.groupMembers.splice(0, obsFromSameForm.groupMembers.length);
-
-            return self.parseSection(members, formDetails.controls, obsFromSameForm);
-        };
-
-        self.createDummyObsGroupForSectionsForForm = function (bahmniObservations) {
-            if (_.isEmpty(bahmniObservations)) {
-                return;
-            }
-
-            formService.getAllForms().then(function (response) {
-                var allForms = response.data;
-                _.forEach(bahmniObservations, function (observation) {
-                    var forms = [];
-                    _.forEach(observation.value, function (form) {
-                        if (form.concept.conceptClass) {
-                            forms.push(form);
-                            return;
-                        }
-                        var observationForm = self.getFormByFormName(allForms, form.concept.shortName, self.getFormVersion(form.groupMembers));
-                        if (!observationForm) {
-                            return;
-                        }
-                        formService.getFormDetail(observationForm.uuid, { v: "custom:(resources:(value))"}).then(function (response) {
-                            var formDetailsAsString = _.get(response, 'data.resources[0].value');
-                            if (formDetailsAsString) {
-                                var formDetails = JSON.parse(formDetailsAsString);
-                                forms.push(self.createSectionForSingleForm(form, formDetails));
-                            }
-                            observation.value = forms;
-                        });
-                    });
-                });
-            });
-        };
-    }
-    ]);
-
-'use strict';
-
-angular.module('bahmni.common.conceptSet')
-    .factory('formService', ['$http', function ($http) {
-        var getFormList = function (encounterUuid) {
-            return $http.get(Bahmni.Common.Constants.latestPublishedForms, {params: {encounterUuid: encounterUuid}});
-        };
-
-        var getAllForms = function () {
-            return $http.get(Bahmni.Common.Constants.allFormsUrl, {params: {v: "custom:(version,name,uuid)"}});
-        };
-
-        var getFormDetail = function (formUuid, params) {
-            return $http.get(Bahmni.Common.Constants.formUrl + '/' + formUuid, {params: params});
-        };
-
-        var getFormTranslations = function (url, form) {
-            if (url && url !== Bahmni.Common.Constants.formTranslationsUrl) {
-                return $http.get(url);
-            }
-            return $http.get(Bahmni.Common.Constants.formTranslationsUrl, { params: form});
-        };
-
-        return {
-            getFormList: getFormList,
-            getAllForms: getAllForms,
-            getFormDetail: getFormDetail,
-            getFormTranslations: getFormTranslations
-        };
-    }]);
-
-'use strict';
 var Bahmni = Bahmni || {};
 Bahmni.Common = Bahmni.Common || {};
 Bahmni.Common.DisplayControl = Bahmni.Common.DisplayControl || {};
@@ -9232,42 +9018,6 @@ angular.module('bahmni.common.displaycontrol.disposition')
                 }
             };
         }]);
-
-'use strict';
-
-angular.module('bahmni.common.displaycontrol.conditionsList', []);
-angular.module('bahmni.common.displaycontrol.conditionsList')
-    .directive('conditionsList', ['conditionsService', 'ngDialog', function (conditionsService, ngDialog) {
-        var controller = function ($scope) {
-            $scope.statuses = ['ACTIVE', 'HISTORY_OF'];
-
-            $scope.openSummaryDialog = function () {
-                ngDialog.open({
-                    template: '../common/displaycontrols/conditionsList/views/conditionsList.html',
-                    className: 'ngdialog-theme-default ng-dialog-all-details-page',
-                    data: {conditions: $scope.conditions},
-                    controller: function ($scope) {
-                        $scope.hideTitle = true;
-                        $scope.statuses = ['ACTIVE', 'HISTORY_OF', 'INACTIVE'];
-                        $scope.conditions = $scope.ngDialogData.conditions;
-                    }
-                });
-            };
-
-            return conditionsService.getConditions($scope.patient.uuid).then(function (conditions) {
-                $scope.conditions = conditions;
-            });
-        };
-        return {
-            restrict: 'E',
-            controller: controller,
-            templateUrl: "../common/displaycontrols/conditionsList/views/conditionsList.html",
-            scope: {
-                params: "=",
-                patient: "="
-            }
-        };
-    }]);
 
 'use strict';
 var Bahmni = Bahmni || {};
@@ -9820,124 +9570,193 @@ angular.module('bahmni.common.uiHelper')
 
 'use strict';
 
-var Bahmni = Bahmni || {};
-Bahmni.ADT = Bahmni.ADT || {};
+angular.module('bahmni.common.conceptSet')
+    .factory('formService', ['$http', function ($http) {
+        var getFormList = function (encounterUuid) {
+            return $http.get(Bahmni.Common.Constants.latestPublishedForms, {params: {encounterUuid: encounterUuid}});
+        };
 
-angular.module('bahmni.adt', ['bahmni.common.conceptSet', 'bahmni.common.logging']);
+        var getAllForms = function () {
+            return $http.get(Bahmni.Common.Constants.allFormsUrl, {params: {v: "custom:(version,name,uuid)"}});
+        };
 
+        var getFormDetail = function (formUuid, params) {
+            return $http.get(Bahmni.Common.Constants.formUrl + '/' + formUuid, {params: params});
+        };
+
+        var getFormTranslations = function (url, form) {
+            if (url && url !== Bahmni.Common.Constants.formTranslationsUrl) {
+                return $http.get(url);
+            }
+            return $http.get(Bahmni.Common.Constants.formTranslationsUrl, { params: form});
+        };
+
+        return {
+            getFormList: getFormList,
+            getAllForms: getAllForms,
+            getFormDetail: getFormDetail,
+            getFormTranslations: getFormTranslations
+        };
+    }]);
 
 'use strict';
 
 var Bahmni = Bahmni || {};
-Bahmni.ADT = Bahmni.ADT || {};
+Bahmni.IPD = Bahmni.IPD || {};
 
-Bahmni.ADT.Constants = (function () {
+angular.module('bahmni.ipd', ['bahmni.common.conceptSet', 'bahmni.common.logging']);
+
+'use strict';
+
+var Bahmni = Bahmni || {};
+Bahmni.IPD = Bahmni.IPD || {};
+
+Bahmni.IPD.Constants = (function () {
     return {
         patientsListUrl: "/patient/search",
         ipdDashboard: "#/patient/{{patientUuid}}/visit/{{visitUuid}}/",
-        admissionLocationUrl: "/openmrs/ws/rest/v1/admissionLocation/"
+        admissionLocationUrl: "/openmrs/ws/rest/v1/admissionLocation/",
+        getAllBedTags: "/openmrs/ws/rest/v1/bedTag",
+        bedTagMapUrl: "/openmrs/ws/rest/v1/bedTagMap/",
+        visitRepresentation: "custom:(uuid,startDatetime,stopDatetime,visitType,patient)",
+        editTagsPrivilege: "Edit Tags",
+        assignBedsPrivilege: "Assign Beds"
     };
 })();
 
 
 'use strict';
 
-angular.module('adt', ['bahmni.common.patient', 'bahmni.common.patientSearch', 'bahmni.common.uiHelper', 'bahmni.common.conceptSet', 'authentication', 'bahmni.common.appFramework',
-    'httpErrorInterceptor', 'bahmni.adt', 'bahmni.common.domain', 'bahmni.common.config', 'ui.router', 'bahmni.common.util', 'bahmni.common.routeErrorHandler', 'bahmni.common.i18n',
-    'bahmni.common.displaycontrol.dashboard', 'bahmni.common.displaycontrol.conditionsList', 'bahmni.common.displaycontrol.observation', 'bahmni.common.displaycontrol.disposition', 'bahmni.common.displaycontrol.admissiondetails', 'bahmni.common.displaycontrol.custom',
+angular.module('ipd', ['bahmni.common.patient', 'bahmni.common.patientSearch', 'bahmni.common.uiHelper', 'bahmni.common.conceptSet', 'authentication', 'bahmni.common.appFramework',
+    'httpErrorInterceptor', 'bahmni.ipd', 'bahmni.common.domain', 'bahmni.common.config', 'ui.router', 'bahmni.common.util', 'bahmni.common.routeErrorHandler', 'bahmni.common.i18n',
+    'bahmni.common.displaycontrol.dashboard', 'bahmni.common.displaycontrol.observation', 'bahmni.common.displaycontrol.disposition', 'bahmni.common.displaycontrol.admissiondetails', 'bahmni.common.displaycontrol.custom',
     'bahmni.common.obs', 'bahmni.common.displaycontrol.patientprofile', 'bahmni.common.displaycontrol.diagnosis', 'RecursionHelper', 'ngSanitize', 'bahmni.common.uiHelper', 'bahmni.common.displaycontrol.navigationlinks', 'pascalprecht.translate',
-    'bahmni.common.displaycontrol.dashboard', 'ngCookies', 'ngDialog', 'angularFileUpload']);
-angular.module('adt').config(['$stateProvider', '$httpProvider', '$urlRouterProvider', '$bahmniTranslateProvider', '$compileProvider',
+    'bahmni.common.displaycontrol.dashboard', 'ngCookies', 'ngDialog', 'angularFileUpload', 'monospaced.elastic']);
+angular.module('ipd').config(['$stateProvider', '$httpProvider', '$urlRouterProvider', '$bahmniTranslateProvider', '$compileProvider',
     function ($stateProvider, $httpProvider, $urlRouterProvider, $bahmniTranslateProvider, $compileProvider) {
         $urlRouterProvider.otherwise('/home');
-        var homeBackLink = {label: "", url: "../home/", accessKey: "h", icon: "fa-home", id: "homeBackLink"};
-        var adtHomeBackLink = {label: "", url: "#/home", accessKey: "p", icon: "fa-users", id: "adtHomeBackLink" };
+
+        var homeBackLink = {type: "link", name: "Home", value: "../home/", accessKey: "h", icon: "fa-home"};
+        var admitLink = {type: "state", name: "ADMIT_HOME_KEY", value: "home", accessKey: "a"};
+        var bedManagementLink = {type: "state", name: "BED_MANAGEMENT_KEY", value: "bedManagement", accessKey: "b"};
+        var navigationLinks = [admitLink, bedManagementLink];
 
         $compileProvider.debugInfoEnabled(false);
 
 
         $stateProvider
-        .state('home', {
-            url: '/home',
-            data: {
-                backLinks: [homeBackLink]
-            },
-            views: {
-                'content': {
-                    templateUrl: 'views/home.html',
-                    controller: function ($scope, appService) {
-                        $scope.isBedManagementEnabled = appService.getAppDescriptor().getConfig("isBedManagementEnabled").value;
+            .state('home', {
+                url: '/home',
+                data: {
+                    homeBackLink: homeBackLink,
+                    navigationLinks: navigationLinks
+                },
+                views: {
+                    'content': {
+                        templateUrl: 'views/home.html',
+                        controller: function ($scope, appService) {
+                            $scope.isBedManagementEnabled = appService.getAppDescriptor().getConfig("isBedManagementEnabled").value;
+                        }
+                    },
+                    'additional-header': {
+                        templateUrl: ' views/header.html',
+                        controller: 'HeaderController'
                     }
                 },
-                'wards@home': {
-                    templateUrl: 'views/wards.html',
-                    controller: 'WardsController'
-                },
-                'additional-header': {
-                    templateUrl: 'views/headerAdt.html'
+                resolve: {
+                    initialization: 'initialization'
                 }
-            },
-            resolve: {
-                initialization: 'initialization'
-            }
-        })
-        .state('patient', {
-            url: '/patient/:patientUuid',
-            data: {
-                backLinks: [homeBackLink, adtHomeBackLink]
-            },
-            abstract: true,
-            views: {
-                'header': {
-                    templateUrl: 'views/headerAdt.html',
-                    controller: function ($scope) {
-                        $scope.showClinicalDashboardLink = true;
+            })
+            .state('bedManagement', {
+                url: '/bedManagement',
+                data: {
+                    homeBackLink: homeBackLink,
+                    navigationLinks: navigationLinks
+                },
+                params: {
+                    dashboardCachebuster: null,
+                    context: null
+                },
+                views: {
+                    'content': {
+                        templateUrl: 'views/bedManagement.html',
+                        controller: 'BedManagementController'
+                    },
+                    'additional-header': {
+                        templateUrl: 'views/header.html',
+                        controller: 'HeaderController'
                     }
                 },
-                'content': {
-                    template: '<ui-view/>'
+                resolve: {
+                    initialization: 'initialization',
+                    init: function ($rootScope) {
+                        $rootScope.patient = undefined;
+                        $rootScope.bedDetails = undefined;
+                    }
+                }
+            })
+            .state('bedManagement.bed', {
+                url: '/bed/:bedId',
+                templateUrl: 'views/bedManagement.html',
+                controller: 'BedManagementController',
+                params: {
+                    dashboardCachebuster: null,
+                    context: null
                 },
-                'additional-header': {
-                    templateUrl: '../common/patient/header/views/header.html'
+                resolve: {
+                    bedResolution: function ($stateParams, bedInitialization, patientInitialization) {
+                        return bedInitialization($stateParams.bedId).then(function (response) {
+                            if (response.patients.length) {
+                                return patientInitialization(response.patients[0].uuid);
+                            }
+                        });
+                    }
                 }
-            },
-
-            resolve: {
-                patientResolution: function ($stateParams, patientInitialization) {
-                    return patientInitialization($stateParams.patientUuid);
+            })
+            .state('bedManagement.patient', {
+                url: '/patient/:patientUuid',
+                templateUrl: 'views/bedManagement.html',
+                controller: 'BedManagementController',
+                resolve: {
+                    patientResolution: function ($stateParams, bedInitialization, patientInitialization) {
+                        return patientInitialization($stateParams.patientUuid).then(function () {
+                            return bedInitialization(undefined, $stateParams.patientUuid);
+                        });
+                    }
                 }
-            }
-        })
-        .state('patient.adt', {
-            url: '/visit/:visitUuid',
-            abstract: true,
-            template: '<ui-view/>'
-        })
-        .state('patient.adt.action', {
-            url: '/:action',
-            templateUrl: 'views/dashboard.html',
-            controller: 'AdtController'
-        })
-        .state('patient.adt.bedForExistingEncounter', {
-            url: '/encounter/:encounterUuid/bed',
-            templateUrl: 'views/bedManagement.html',
-            controller: 'BedManagementController'
-        })
-        .state('patient.adt.bedForNewEncounter', {
-            url: '/bed',
-            templateUrl: 'views/bedManagement.html',
-            controller: 'BedManagementController'
-        });
+            }).state('dashboard', {
+                url: '/patient/:patientUuid/visit/:visitUuid/dashboard',
+                data: {
+                    homeBackLink: homeBackLink,
+                    navigationLinks: navigationLinks
+                },
+                views: {
+                    'content': {
+                        templateUrl: 'views/dashboard.html',
+                        controller: 'AdtController'
+                    },
+                    'additional-header': {
+                        templateUrl: ' views/header.html',
+                        controller: 'HeaderController'
+                    }
+                },
+                resolve: {
+                    initialization: 'initialization',
+                    patientResolution: function ($stateParams, bedInitialization, patientInitialization) {
+                        return patientInitialization($stateParams.patientUuid).then(function () {
+                            return bedInitialization(undefined, $stateParams.patientUuid);
+                        });
+                    }
+                }
+            });
 
-        $bahmniTranslateProvider.init({app: 'adt', shouldMerge: true});
-    }]).run(['$window', function ($window) {
-        moment.locale($window.localStorage["NG_TRANSLATE_LANG_KEY"] || "en");
+        $bahmniTranslateProvider.init({app: 'ipd', shouldMerge: true});
     }]);
 
 'use strict';
 
-angular.module('bahmni.adt').factory('initialization', ['$rootScope', '$q', 'appService', 'configurations', 'authenticator', 'spinner',
-    function ($rootScope, $q, appService, configurations, authenticator, spinner) {
+angular.module('bahmni.ipd').factory('initialization', ['$rootScope', '$q', '$bahmniCookieStore', 'appService', 'configurations', 'authenticator', 'spinner', 'locationService',
+    function ($rootScope, $q, $bahmniCookieStore, appService, configurations, authenticator, spinner, locationService) {
         var getConfigs = function () {
             var config = $q.defer();
             var configNames = ['encounterConfig', 'patientConfig', 'genderMap', 'relationshipTypeMap'];
@@ -9946,33 +9765,47 @@ angular.module('bahmni.adt').factory('initialization', ['$rootScope', '$q', 'app
                 $rootScope.patientConfig = configurations.patientConfig();
                 $rootScope.genderMap = configurations.genderMap();
                 $rootScope.relationshipTypeMap = configurations.relationshipTypeMap();
-                $rootScope.diagnosisStatus = (appService.getAppDescriptor().getConfig("diagnosisStatus") && appService.getAppDescriptor().getConfig("diagnosisStatus").value || "RULED OUT");
+                $rootScope.diagnosisStatus = ((appService.getAppDescriptor().getConfig("diagnosisStatus") && appService.getAppDescriptor().getConfig("diagnosisStatus").value) || "RULED OUT");
                 config.resolve();
             });
             return config.promise;
         };
 
         var initApp = function () {
-            return appService.initApp('adt', {'app': true, 'extension': true}).then(function (data) {
+            return appService.initApp('ipd', {'app': true, 'extension': true}).then(function (data) {
                 var config = data.getConfig("onAdmissionForwardTo", false);
                 data.baseConfigs.dashboard.value.sections = _.sortBy(data.baseConfigs.dashboard.value.sections, function (section) {
                     return section.displayOrder;
-                }
-                );
-                data.baseConfigs.isBedManagementEnabled = {name: 'isBedManagementEnabled', value: _.includes(config[0].value, 'bed')};
+                });
+                data.baseConfigs.isBedManagementEnabled = {
+                    name: 'isBedManagementEnabled',
+                    value: _.includes(config[0].value, 'bed')
+                };
                 if (config[1]) {
-                    data.customConfigs.isBedManagementEnabled = {name: 'isBedManagementEnabled', value: _.includes(config[1].value, 'bed')};
+                    data.customConfigs.isBedManagementEnabled = {
+                        name: 'isBedManagementEnabled',
+                        value: _.includes(config[1].value, 'bed')
+                    };
                 }
+                initVisitLocation();
             });
         };
 
+        var initVisitLocation = function () {
+            var loginLocationUuid = $bahmniCookieStore.get(Bahmni.Common.Constants.locationCookieName).uuid;
+            locationService.getVisitLocation(loginLocationUuid).then(function (response) {
+                if (response.data) {
+                    $rootScope.visitLocationUuid = response.data.uuid;
+                }
+            });
+        };
         return spinner.forPromise(authenticator.authenticateUser().then(initApp).then(getConfigs));
     }
 ]);
 
 'use strict';
 
-angular.module('bahmni.adt').factory('patientInitialization', ['$rootScope', '$q', 'patientService', 'initialization', 'bedService', 'spinner', '$translate',
+angular.module('bahmni.ipd').factory('patientInitialization', ['$rootScope', '$q', 'patientService', 'initialization', 'bedService', 'spinner', '$translate',
     function ($rootScope, $q, patientService, initialization, bedService, spinner, $translate) {
         return function (patientUuid) {
             var getPatient = function () {
@@ -9985,58 +9818,280 @@ angular.module('bahmni.adt').factory('patientInitialization', ['$rootScope', '$q
                 return patientPromise.promise;
             };
 
-            var bedDetailsForPatient = function () {
-                return bedService.setBedDetailsForPatientOnRootScope(patientUuid);
-            };
-
-            return spinner.forPromise(initialization.then(getPatient).then(bedDetailsForPatient));
+            return spinner.forPromise(initialization.then(getPatient));
         };
     }
 ]);
 
 
 'use strict';
-var Bahmni = Bahmni || {};
-Bahmni.ADT = Bahmni.ADT || {};
 
-Bahmni.ADT.DispositionDisplayUtil = {
-    getEncounterToDisplay: function (encounterConfig, visit) {
-        var rankActions = {};
-        rankActions[encounterConfig.getAdmissionEncounterTypeUuid()] = 1;
-        rankActions[encounterConfig.getTransferEncounterTypeUuid()] = 2;
-        rankActions[encounterConfig.getDischargeEncounterTypeUuid()] = 3;
-
-        if (visit.isDischarged()) {
-            return encounterConfig.getDischargeEncounterTypeUuid();
-        } else if (visit.isAdmitted() && !visit.isDischarged()) {
-            return encounterConfig.getTransferEncounterTypeUuid();
-        } else {
-            return encounterConfig.getAdmissionEncounterTypeUuid();
-        }
+angular.module('bahmni.ipd').factory('bedInitialization', ['$rootScope', '$q', 'patientService', 'initialization', 'bedService', 'spinner',
+    function ($rootScope, $q, patientService, initialization, bedService, spinner) {
+        return function (bedId, patientUuid) {
+            var initializeBedInfo = function () {
+                if (bedId) {
+                    return bedService.getCompleteBedDetailsByBedId(bedId).then(function (response) {
+                        var bedInfo = response.data;
+                        bedInfo.wardName = response.data.physicalLocation.parentLocation.display;
+                        bedInfo.wardUuid = response.data.physicalLocation.parentLocation.uuid;
+                        bedInfo.physicalLocationName = response.data.physicalLocation.name;
+                        $rootScope.bedDetails = bedInfo;
+                        return bedInfo;
+                    });
+                }
+                return bedService.setBedDetailsForPatientOnRootScope(patientUuid);
+            };
+            return spinner.forPromise(initializeBedInfo());
+        };
     }
-};
+]);
+
+
+'use strict';
+
+angular.module('bahmni.ipd')
+    .controller('BedManagementController', ['$scope', '$rootScope', '$stateParams', '$state', 'spinner', 'wardService', 'bedManagementService', 'visitService', 'messagingService', 'appService', 'ngDialog',
+        function ($scope, $rootScope, $stateParams, $state, spinner, wardService, bedManagementService, visitService, messagingService, appService, ngDialog) {
+            $scope.wards = null;
+            $scope.ward = {};
+            $scope.editTagsPrivilege = Bahmni.IPD.Constants.editTagsPrivilege;
+
+            var links = {
+                "dashboard": {
+                    "name": "inpatient",
+                    "translationKey": "PATIENT_ADT_PAGE_KEY",
+                    "url": "../bedmanagement/#/patient/{{patientUuid}}/visit/{{visitUuid}}/dashboard"
+                }
+            };
+
+            var isDepartmentPresent = function (department) {
+                if (!department) return false;
+                return _.values(department).indexOf() === -1;
+            };
+
+            var init = function () {
+                $rootScope.selectedBedInfo = $rootScope.selectedBedInfo || {};
+                loadAllWards().then(function () {
+                    var context = $stateParams.context || {};
+                    if (context && isDepartmentPresent(context.department)) {
+                        expandAdmissionMasterForDepartment(context.department);
+                    } else if ($rootScope.bedDetails) {
+                        expandAdmissionMasterForDepartment({
+                            uuid: $rootScope.bedDetails.wardUuid,
+                            name: $rootScope.bedDetails.wardName
+                        });
+                    }
+                    resetDepartments();
+                    resetBedInfo();
+                });
+            };
+
+            var loadAllWards = function () {
+                return spinner.forPromise(wardService.getWardsList().success(function (wardsList) {
+                    $scope.wards = wardsList.results;
+                }));
+            };
+
+            var mapRoomInfo = function (roomsInfo) {
+                var mappedRooms = [];
+                _.forIn(roomsInfo, function (value, key) {
+                    var bedsGroupedByBedStatus = _.groupBy(value, 'status');
+                    var availableBeds = bedsGroupedByBedStatus["AVAILABLE"] ? bedsGroupedByBedStatus["AVAILABLE"].length : 0;
+                    mappedRooms.push({name: key, beds: value, totalBeds: value.length, availableBeds: availableBeds});
+                });
+                return mappedRooms;
+            };
+
+            var getRoomsForWard = function (bedLayouts) {
+                var rooms = mapRoomInfo(_.groupBy(bedLayouts, 'location'));
+                _.each(rooms, function (room) {
+                    room.beds = bedManagementService.createLayoutGrid(room.beds);
+                });
+                return rooms;
+            };
+
+            var getWardDetails = function (department) {
+                return _.filter($scope.wards, function (entry) {
+                    return entry.ward.uuid === department.uuid;
+                });
+            };
+
+            var selectCurrentDepartment = function (department) {
+                _.each($scope.wards, function (wardElement) {
+                    if (wardElement.ward.uuid === department.uuid) {
+                        wardElement.ward.isSelected = true;
+                        wardElement.ward.selected = true;
+                    }
+                });
+            };
+
+            var loadBedsInfoForWard = function (department) {
+                return wardService.bedsForWard(department.uuid).then(function (response) {
+                    var wardDetails = getWardDetails(department);
+                    var rooms = getRoomsForWard(response.data.bedLayouts);
+                    $scope.ward = {
+                        rooms: rooms,
+                        uuid: department.uuid,
+                        name: department.name,
+                        totalBeds: wardDetails[0].totalBeds,
+                        occupiedBeds: wardDetails[0].occupiedBeds
+                    };
+                    $scope.departmentSelected = true;
+                    $rootScope.selectedBedInfo.wardName = department.name;
+                    $rootScope.selectedBedInfo.wardUuid = department.uuid;
+                    selectCurrentDepartment(department);
+                    $scope.$broadcast("event:departmentChanged");
+                });
+            };
+
+            var expandAdmissionMasterForDepartment = function (department) {
+                spinner.forPromise(loadBedsInfoForWard(department));
+            };
+
+            $scope.onSelectDepartment = function (department) {
+                spinner.forPromise(loadBedsInfoForWard(department).then(function () {
+                    resetPatientAndBedInfo();
+                    resetDepartments();
+                    $scope.$broadcast("event:deselectWards");
+                    department.isSelected = true;
+                }));
+            };
+
+            var resetDepartments = function () {
+                _.each($scope.wards, function (option) {
+                    option.ward.isSelected = false;
+                });
+            };
+
+            var resetBedInfo = function () {
+                $rootScope.selectedBedInfo.roomName = undefined;
+                $rootScope.selectedBedInfo.bed = undefined;
+            };
+
+            var resetPatientAndBedInfo = function () {
+                resetBedInfo();
+                goToBedManagement();
+            };
+
+            $scope.$on("event:patientAssignedToBed", function (event, bed) {
+                $scope.ward.occupiedBeds = $scope.ward.occupiedBeds + 1;
+                _.map($scope.ward.rooms, function (room) {
+                    if (room.name === $scope.roomName) {
+                        room.availableBeds = room.availableBeds - 1;
+                    }
+                });
+            });
+
+            $scope.$on("event:updateSelectedBedInfoForCurrentPatientVisit", function (event, patientUuid) {
+                getVisitInfoByPatientUuid(patientUuid).then(function (visitUuid) {
+                    var options = { patientUuid: patientUuid, visitUuid: visitUuid };
+                    $state.go("bedManagement.patient", options);
+                });
+            });
+
+            var goToBedManagement = function () {
+                if ($state.current.name === "bedManagement.bed") {
+                    var options = {};
+                    options['context'] = {
+                        department: {
+                            uuid: $scope.ward.uuid,
+                            name: $scope.ward.name
+                        },
+                        roomName: $scope.roomName
+                    };
+                    options['dashboardCachebuster'] = Math.random();
+                    $state.go("bedManagement", options);
+                }
+            };
+
+            var getVisitInfoByPatientUuid = function (patientUuid) {
+                return visitService.search({
+                    patient: patientUuid, includeInactive: false, v: "custom:(uuid,location:(uuid))"
+                }).then(function (response) {
+                    var results = response.data.results;
+                    var activeVisitForCurrentLoginLocation;
+                    if (results) {
+                        activeVisitForCurrentLoginLocation = _.filter(results, function (result) {
+                            return result.location.uuid === $rootScope.visitLocationUuid;
+                        });
+                    }
+                    var hasActiveVisit = activeVisitForCurrentLoginLocation.length > 0;
+                    return hasActiveVisit ? activeVisitForCurrentLoginLocation[0].uuid : "";
+                });
+            };
+
+            $scope.goToAdtPatientDashboard = function () {
+                getVisitInfoByPatientUuid($scope.patient.uuid).then(function (visitUuid) {
+                    var options = {patientUuid: $scope.patient.uuid, visitUuid: visitUuid};
+                    var url = appService.getAppDescriptor().formatUrl(links.dashboard.url, options);
+                    window.open(url);
+                });
+                if (window.scrollY > 0) {
+                    window.scrollTo(0, 0);
+                }
+            };
+
+            $scope.canEditTags = function () {
+                return $rootScope.selectedBedInfo.bed && $state.current.name === "bedManagement.bed";
+            };
+
+            $scope.editTagsOnTheBed = function () {
+                ngDialog.openConfirm({
+                    template: 'views/editTags.html',
+                    scope: $scope,
+                    closeByEscape: true,
+                    className: "ngdialog-theme-default ng-dialog-adt-popUp"
+                });
+            };
+
+            init();
+        }]);
+
+'use strict';
+
+angular.module('bahmni.ipd')
+    .controller('HeaderController', ['$scope', '$rootScope', '$state',
+        function ($scope, $rootScope, $state) {
+            $scope.goToAdmitState = function () {
+                var options = {};
+                options['dashboardCachebuster'] = Math.random();
+                $state.go("home", options);
+            };
+
+            $scope.goToBedManagementState = function () {
+                var options = {};
+                options['dashboardCachebuster'] = Math.random();
+                $state.go("bedManagement", options);
+            };
+        }]);
 
 "use strict";
 
-angular.module('bahmni.adt')
+angular.module('bahmni.ipd')
     .controller('AdtController', ['$scope', '$q', '$rootScope', 'spinner', 'dispositionService',
         'encounterService', 'bedService', 'appService', 'visitService', '$location', '$window', 'sessionService',
-        'messagingService', '$anchorScroll', '$stateParams', 'ngDialog', '$filter', 'auditLogService',
+        'messagingService', '$anchorScroll', '$stateParams', 'ngDialog', '$filter', '$state',
         function ($scope, $q, $rootScope, spinner, dispositionService, encounterService, bedService,
                   appService, visitService, $location, $window, sessionService, messagingService, $anchorScroll,
-                  $stateParams, ngDialog, $filter, auditLogService) {
+                  $stateParams, ngDialog, $filter, $state) {
             var actionConfigs = {};
             var encounterConfig = $rootScope.encounterConfig;
             var locationUuid = sessionService.getLoginLocationUuid();
             var visitTypes = encounterConfig.getVisitTypes();
+            var customVisitParams = Bahmni.IPD.Constants.visitRepresentation;
+            $scope.assignBedsPrivilege = Bahmni.IPD.Constants.assignBedsPrivilege;
             $scope.defaultVisitTypeName = appService.getAppDescriptor().getConfigValue('defaultVisitType');
+            var hideStartNewVisitPopUp = appService.getAppDescriptor().getConfigValue('hideStartNewVisitPopUp');
             $scope.adtObservations = [];
             $scope.dashboardConfig = appService.getAppDescriptor().getConfigValue('dashboard');
+            $scope.expectedDateOfDischargeConceptName = appService.getAppDescriptor().getConfigValue('expectedDateOfDischarge') || "";
             $scope.getAdtConceptConfig = $scope.dashboardConfig.conceptName;
+            $scope.editMode = false;
 
             var getVisitTypeUuid = function (visitTypeName) {
                 var visitType = _.find(visitTypes, {name: visitTypeName});
-                return visitType && visitType.uuid || null;
+                return (visitType && visitType.uuid) || null;
             };
 
             var defaultVisitTypeUuid = getVisitTypeUuid($scope.defaultVisitTypeName);
@@ -10048,24 +10103,11 @@ angular.module('bahmni.adt')
                 return defaultVisitTypeUuid;
             };
 
-            var getActionCode = function (concept) {
-                var mappingCode = "";
-                if (concept.mappings) {
-                    concept.mappings.forEach(function (mapping) {
-                        var mappingSource = mapping.display.split(":")[0];
-                        if (mappingSource === Bahmni.Common.Constants.emrapiConceptMappingSource) {
-                            mappingCode = $.trim(mapping.display.split(":")[1]);
-                        }
-                    });
-                }
-                return mappingCode;
-            };
-
             var initializeActionConfig = function () {
-                var admitActions = appService.getAppDescriptor().getExtensions("org.bahmni.adt.admit.action", "config");
-                var transferActions = appService.getAppDescriptor().getExtensions("org.bahmni.adt.transfer.action", "config");
-                var dischargeActions = appService.getAppDescriptor().getExtensions("org.bahmni.adt.discharge.action", "config");
-                var undoDischargeActions = appService.getAppDescriptor().getExtensions("org.bahmni.adt.undo.discharge.action", "config");
+                var admitActions = appService.getAppDescriptor().getExtensions("org.bahmni.ipd.admit.action", "config");
+                var transferActions = appService.getAppDescriptor().getExtensions("org.bahmni.ipd.transfer.action", "config");
+                var dischargeActions = appService.getAppDescriptor().getExtensions("org.bahmni.ipd.discharge.action", "config");
+                var undoDischargeActions = appService.getAppDescriptor().getExtensions("org.bahmni.ipd.undo.discharge.action", "config");
                 if (encounterConfig) {
                     var Constants = Bahmni.Common.Constants;
                     actionConfigs[Constants.admissionCode] = {
@@ -10106,26 +10148,45 @@ angular.module('bahmni.adt')
                 }
             };
 
+            var getPatientSpecificActiveVisits = function (response) {
+                var currentActiveVisit = _.last(response.data.results);
+                return currentActiveVisit ? currentActiveVisit.uuid : null;
+            };
+
             var getVisit = function () {
-                var visitUuid = $stateParams.visitUuid;
-                if (visitUuid !== 'undefined' && visitUuid !== 'null' && visitUuid !== '') {
-                    return visitService.getVisitSummary(visitUuid).then(function (response) {
-                        $scope.visitSummary = new Bahmni.Common.VisitSummary(response.data);
-                    });
-                } else {
+                var getNoVisitPromise = function () {
                     $scope.visitSummary = null;
                     return $q.when({id: 1, status: "Returned from service.", promiseComplete: true});
+                };
+                if ($scope.patient) {
+                    return visitService.search({patient: $scope.patient.uuid, v: customVisitParams, includeInactive: false}).then(function (visitsResponse) {
+                        var visitUuid = getPatientSpecificActiveVisits(visitsResponse);
+                        if (visitUuid) {
+                            return visitService.getVisitSummary(visitUuid).then(function (response) {
+                                $scope.visitSummary = new Bahmni.Common.VisitSummary(response.data);
+                            });
+                        } else {
+                            return getNoVisitPromise();
+                        }
+                    });
+                } else {
+                    return getNoVisitPromise();
                 }
+            };
+
+            $scope.showAdtButtons = function () {
+                return $state.current.name === "bedManagement.patient" && !$scope.editMode;
             };
 
             var init = function () {
                 initializeActionConfig();
+                $scope.encounterConfig = $scope.$parent.encounterConfig;
+                $scope.currentVisitTypeUuid = getCurrentVisitTypeUuid();
                 var defaultVisitType = appService.getAppDescriptor().getConfigValue('defaultVisitType');
                 var visitTypes = encounterConfig.getVisitTypes();
                 $scope.visitControl = new Bahmni.Common.VisitControl(visitTypes, defaultVisitType, visitService);
                 $scope.dashboard = Bahmni.Common.DisplayControl.Dashboard.create($scope.dashboardConfig || {}, $filter);
                 $scope.sectionGroups = $scope.dashboard.getSections($scope.diseaseTemplates);
-
                 return getVisit().then(dispositionService.getDispositionActions).then(function (response) {
                     if (response.data && response.data.results && response.data.results.length) {
                         $scope.dispositionActions = getDispositionActions(response.data.results[0].answers);
@@ -10134,52 +10195,6 @@ angular.module('bahmni.adt')
                         }
                     }
                 });
-            };
-
-            $scope.$watch('dispositionAction', function () {
-                var dispositionCode;
-                if ($scope.dispositionAction) {
-                    dispositionCode = getActionCode($scope.dispositionAction);
-                }
-                $scope.actions = dispositionCode ? actionConfigs[dispositionCode].allowedActions : [];
-            });
-
-            $scope.getDisplayForContinuingVisit = function () {
-                return "Admit";
-            };
-
-            $scope.getDisplay = function (displayFunction, display) {
-                if (displayFunction) {
-                    return $scope.call(displayFunction);
-                }
-                return display;
-            };
-
-            $scope.startNewVisit = function (visitTypeUuid) {
-                if ($scope.visitSummary) {
-                    visitService.endVisit($scope.visitSummary.uuid).then(function () {
-                        $scope.admit(visitTypeUuid);
-                    });
-                } else {
-                    $scope.admit(visitTypeUuid);
-                }
-            };
-
-            $scope.cancel = function () {
-                $location.url(Bahmni.ADT.Constants.patientsListUrl);
-                return $q.when({});
-            };
-
-            $scope.call = function (functionName) {
-                if (functionName) {
-                    return $scope[functionName]();
-                } else {
-                    return $q.when({});
-                }
-            };
-
-            $scope.visitExists = function () {
-                return $scope.visitSummary ? true : false;
             };
 
             var getEncounterData = function (encounterTypeUuid, visitTypeUuid) {
@@ -10200,13 +10215,17 @@ angular.module('bahmni.adt')
                 var forwardLink = appDescriptor.getConfig(option);
                 forwardLink = forwardLink && forwardLink.value;
 
+                var bedId = _.get($rootScope.bedDetails, 'bedId') || _.get($rootScope.selectedBedInfo, 'bed.bedId');
                 var options = {
                     'patientUuid': $scope.patient.uuid,
                     'encounterUuid': response.encounterUuid,
-                    'visitUuid': response.visitUuid
+                    'visitUuid': response.visitUuid,
+                    'bedId': bedId
                 };
                 if (forwardLink) {
-                    $window.location = appDescriptor.formatUrl(forwardLink, options);
+                    $state.transitionTo("bedManagement.patient", options, {
+                        reload: true, inherit: false, notify: true
+                    });
                 }
             };
 
@@ -10214,14 +10233,14 @@ angular.module('bahmni.adt')
                 var currentVisitTypeUuid = getCurrentVisitTypeUuid();
                 if (currentVisitTypeUuid !== null) {
                     var encounterData = getEncounterData($scope.encounterConfig.getAdmissionEncounterTypeUuid(), currentVisitTypeUuid);
-                    return encounterService.create(encounterData).success(function (response) {
-                        logEncounter(response.patientUuid, response.encounterUuid, response.encounterType);
+                    return encounterService.create(encounterData).then(function (response) {
                         if ($scope.visitSummary === null) {
-                            visitService.getVisitSummary(response.visitUuid).then(function (response) {
+                            visitService.getVisitSummary(response.data.visitUuid).then(function (response) {
                                 $scope.visitSummary = new Bahmni.Common.VisitSummary(response.data);
                             });
                         }
-                        forwardUrl(response, "onAdmissionForwardTo");
+                        assignBedToPatient($rootScope.selectedBedInfo.bed, response.data.patientUuid, response.data.encounterUuid);
+                        forwardUrl(response.data, "onAdmissionForwardTo");
                     });
                 } else if ($scope.defaultVisitTypeName === null) {
                     messagingService.showMessage("error", "MESSAGE_DEFAULT_VISIT_TYPE_NOT_FOUND_KEY");
@@ -10231,15 +10250,30 @@ angular.module('bahmni.adt')
                 return $q.when({});
             };
 
+            var assignBedToPatient = function (bed, patientUuid, encounterUuid) {
+                spinner.forPromise(bedService.assignBed(bed.bedId, patientUuid, encounterUuid).then(function () {
+                    bed.status = "OCCUPIED";
+                    $scope.$emit("event:patientAssignedToBed", $rootScope.selectedBedInfo.bed);
+                    messagingService.showMessage('info', "Bed " + bed.bedNumber + " is assigned successfully");
+                }));
+            };
+
             $scope.admit = function () {
-                if ($scope.visitSummary && $scope.visitSummary.visitType !== $scope.defaultVisitTypeName) {
+                if (angular.isUndefined($rootScope.selectedBedInfo.bed)) {
+                    messagingService.showMessage("error", "Please select a bed to admit patient");
+                } else if ($scope.visitSummary && $scope.visitSummary.visitType !== $scope.defaultVisitTypeName && !hideStartNewVisitPopUp) {
                     ngDialog.openConfirm({
                         template: 'views/visitChangeConfirmation.html',
                         scope: $scope,
                         closeByEscape: true
                     });
                 } else {
-                    return createEncounterAndContinue();
+                    ngDialog.openConfirm({
+                        template: 'views/admitConfirmation.html',
+                        scope: $scope,
+                        closeByEscape: true,
+                        className: "ngdialog-theme-default ng-dialog-adt-popUp"
+                    });
                 }
                 return $q.when({});
             };
@@ -10248,30 +10282,15 @@ angular.module('bahmni.adt')
                 ngDialog.close();
             };
 
-            var logVisit = function (patientUuid, eventType) {
-                var messageParams = {visitUuid: $scope.visitSummary.uuid, visitType: $scope.visitSummary.visitType};
-                return auditLogService.log(patientUuid, eventType, messageParams, 'MODULE_LABEL_INPATIENT_KEY');
-            };
-
-            var logEncounter = function (patientUuid, encounterUuid, encounterType) {
-                var messageParams = {encounterUuid: encounterUuid, encounterType: encounterType};
-                return auditLogService.log(patientUuid, 'EDIT_ENCOUNTER', messageParams, 'MODULE_LABEL_INPATIENT_KEY');
-            };
-
             $scope.closeCurrentVisitAndStartNewVisit = function () {
                 if (defaultVisitTypeUuid !== null) {
                     var encounter = getEncounterData($scope.encounterConfig.getAdmissionEncounterTypeUuid(), defaultVisitTypeUuid);
-                    visitService.endVisitAndCreateEncounter($scope.visitSummary.uuid, encounterService.buildEncounter(encounter)).success(function (response) {
-                        logVisit(encounter.patientUuid, "CLOSE_VISIT").then(function () {
-                            return visitService.getVisitSummary(response.visitUuid).then(function (response) {
-                                $scope.visitSummary = new Bahmni.Common.VisitSummary(response.data);
-                                return logVisit(encounter.patientUuid, "OPEN_VISIT");
-                            }).then(function () {
-                                return logEncounter(response.patientUuid, response.encounterUuid, response.encounterType);
-                            });
-                        }).then(function () {
-                            forwardUrl(response, "onAdmissionForwardTo");
+                    visitService.endVisitAndCreateEncounter($scope.visitSummary.uuid, encounterService.buildEncounter(encounter)).then(function (response) {
+                        visitService.getVisitSummary(response.data.visitUuid).then(function (response) {
+                            $scope.visitSummary = new Bahmni.Common.VisitSummary(response.data);
                         });
+                        assignBedToPatient($rootScope.selectedBedInfo.bed, response.data.patientUuid, response.data.encounterUuid);
+                        forwardUrl(response.data, "onAdmissionForwardTo");
                     });
                 } else if ($scope.defaultVisitTypeName === null) {
                     messagingService.showMessage("error", "MESSAGE_DEFAULT_VISIT_TYPE_NOT_FOUND_KEY");
@@ -10287,182 +10306,247 @@ angular.module('bahmni.adt')
                 ngDialog.close();
             };
 
+            spinner.forPromise(init());
+
+            $scope.disableAdmitButton = function () {
+                return !($rootScope.patient && !$rootScope.bedDetails);
+            };
+
+            $scope.disableTransfer = function () {
+                return !($rootScope.patient && $rootScope.bedDetails && !isCurrentPatientPresentOnSelectedBed());
+            };
+
+            var isCurrentPatientPresentOnSelectedBed = function () {
+                if ($rootScope.selectedBedInfo.bed) {
+                    return $rootScope.selectedBedInfo.bed.bedId === $rootScope.bedDetails.bedId;
+                }
+                return false;
+            };
+            $scope.disableDischargeButton = function () {
+                return !($rootScope.patient && $rootScope.bedDetails && isCurrentPatientPresentOnSelectedBed());
+            };
+
             $scope.transfer = function () {
-                var encounterData = getEncounterData($scope.encounterConfig.getTransferEncounterTypeUuid(), getCurrentVisitTypeUuid());
-                return encounterService.create(encounterData).then(function (response) {
-                    logEncounter(response.data.patientUuid, response.data.encounterUuid, response.data.encounterType);
-                    forwardUrl(response.data, "onTransferForwardTo");
+                if (angular.isUndefined($rootScope.selectedBedInfo.bed) || $rootScope.selectedBedInfo.bed.bedId === $rootScope.bedDetails.bedId) {
+                    messagingService.showMessage("error", "Please select a bed to transfer the patient");
+                } else {
+                    ngDialog.openConfirm({
+                        template: 'views/transferConfirmation.html',
+                        scope: $scope,
+                        closeByEscape: true,
+                        className: "ngdialog-theme-default ng-dialog-adt-popUp"
+                    });
+                }
+            };
+
+            var reloadStateWithContextParams = function () {
+                var selectedBedInfo = $rootScope.selectedBedInfo;
+                var options = {
+                    patientUuid: $scope.patient.uuid,
+                    context: {
+                        roomName: selectedBedInfo.roomName,
+                        department: {
+                            uuid: selectedBedInfo.wardUuid,
+                            name: selectedBedInfo.wardName,
+                            roomName: selectedBedInfo.roomName
+                        }
+                    }
+                };
+                $state.transitionTo("bedManagement.patient", options, {
+                    reload: true, inherit: false, notify: true
                 });
+            };
+
+            var disableButton = function () {
+                $scope.isDisabled = true;
+            };
+
+            $scope.transferConfirmation = function () {
+                var encounterData = getEncounterData($scope.encounterConfig.getTransferEncounterTypeUuid(), getCurrentVisitTypeUuid());
+                disableButton();
+                spinner.forPromise(bedService.getCompleteBedDetailsByBedId($rootScope.selectedBedInfo.bed.bedId).then(function (response) {
+                    var bedDetails = response.data;
+                    if (!bedDetails.patients.length) {
+                        encounterService.create(encounterData).then(function (response) {
+                            assignBedToPatient($rootScope.selectedBedInfo.bed, response.data.patientUuid, response.data.encounterUuid);
+                            ngDialog.close();
+                            forwardUrl(response.data, "onTransferForwardTo");
+                        });
+                    } else {
+                        showErrorMessage(bedDetails);
+                        reloadStateWithContextParams();
+                    }
+                }));
             };
 
             $scope.discharge = function () {
+                if (!$rootScope.bedDetails.bedNumber) {
+                    messagingService.showMessage("error", "Please select a bed to discharge the patient");
+                } else {
+                    visitService.search({patient: $scope.patient.uuid, v: customVisitParams, includeInactive: false}).then(function (visitResponse) {
+                        var visitUuid = getPatientSpecificActiveVisits(visitResponse);
+                        if (!visitUuid) {
+                            messagingService.showMessage("error", "No active visit found for this patient");
+                        } else {
+                            ngDialog.openConfirm({
+                                template: 'views/dischargeConfirmation.html',
+                                scope: $scope,
+                                closeByEscape: true,
+                                className: "ngdialog-theme-default ng-dialog-adt-popUp"
+                            });
+                        }
+                    });
+                }
+            };
+
+            $scope.dischargeConfirmation = function () {
                 var encounterData = getEncounterData($scope.encounterConfig.getDischargeEncounterTypeUuid());
                 return spinner.forPromise(encounterService.discharge(encounterData).then(function (response) {
-                    logEncounter(response.data.patientUuid, response.data.encounterUuid, response.data.encounterType);
+                    ngDialog.close();
                     forwardUrl(response.data, "onDischargeForwardTo");
+                    var bedNumber = _.get($rootScope.bedDetails, 'bedNumber') || _.get($rootScope.selectedBedInfo, 'bed.bedNumber');
+                    messagingService.showMessage('info', "Successfully discharged from " + bedNumber);
                 }));
             };
 
-            $scope.undoDischarge = function () {
-                return spinner.forPromise(encounterService.delete($scope.visitSummary.getDischargeEncounterUuid(), "Undo Discharge")).then(function (response) {
-                    var params = {
-                        'encounterUuid': $scope.visitSummary.getAdmissionEncounterUuid(),
-                        'visitUuid': $scope.visitSummary.uuid
-                    };
-                    var admissionEncounterType = $scope.encounterConfig.getEncounterTypeByUuid($scope.encounterConfig.getAdmissionEncounterTypeUuid());
-                    logEncounter($scope.patient.uuid, params.encounterUuid, admissionEncounterType['name']);
-                    forwardUrl(params, "onAdmissionForwardTo");
-                });
+            var showErrorMessage = function (bedDetails) {
+                var patient = bedDetails.patients[0];
+                var identifier = patient.display && patient.display.split(" - ")[0];
+                patient.identifiers[0].identifier = identifier;
+                messagingService.showMessage('error', "Please select an available bed. This bed is already assigned to " + identifier);
+                $scope.cancelConfirmationDialog();
             };
 
-            spinner.forPromise(init());
-            $anchorScroll();
-        }
-    ]);
-
-Bahmni.Common.AuditLogEventDetails = {
-    "USER_LOGIN_SUCCESS": {eventType: "USER_LOGIN_SUCCESS", message: "USER_LOGIN_SUCCESS_MESSAGE"},
-    "USER_LOGIN_FAILED": {eventType: "USER_LOGIN_FAILED", message: "USER_LOGIN_FAILED_MESSAGE"},
-    "USER_LOGOUT_SUCCESS": {eventType: "USER_LOGOUT_SUCCESS", message: "USER_LOGOUT_SUCCESS_MESSAGE"},
-    "OPEN_VISIT": {eventType: "OPEN_VISIT", message: "OPEN_VISIT_MESSAGE"},
-    "EDIT_VISIT": {eventType: "EDIT_VISIT", message: "EDIT_VISIT_MESSAGE"},
-    "CLOSE_VISIT": {eventType: "CLOSE_VISIT", message: "CLOSE_VISIT_MESSAGE"},
-    "CLOSE_VISIT_FAILED": {eventType: "CLOSE_VISIT_FAILED", message: "CLOSE_VISIT_FAILED_MESSAGE"},
-    "EDIT_ENCOUNTER": {eventType: "EDIT_ENCOUNTER", message: "EDIT_ENCOUNTER_MESSAGE"},
-
-    "VIEWED_REGISTRATION_PATIENT_SEARCH": {eventType: "VIEWED_REGISTRATION_PATIENT_SEARCH", message: "VIEWED_REGISTRATION_PATIENT_SEARCH_MESSAGE"},
-    "VIEWED_REGISTRATION_CAG_SEARCH": {eventType: "VIEWED_REGISTRATION_CAG_SEARCH", message: "VIEWED_REGISTRATION_CAG_SEARCH_MESSAGE"},
-    "VIEWED_NEW_CAG_PAGE": {eventType: "VIEWED_NEW_CAG_PAGE", message: "VIEWED_NEW_CAG_PAGE"},
-    "VIEWED_NEW_PATIENT_PAGE": {eventType: "VIEWED_NEW_PATIENT_PAGE", message: "VIEWED_NEW_PATIENT_PAGE_MESSAGE"},
-    "REGISTER_NEW_PATIENT": {eventType: "REGISTER_NEW_PATIENT", message: "REGISTER_NEW_PATIENT_MESSAGE"},
-    "EDIT_PATIENT_DETAILS": {eventType: "EDIT_PATIENT_DETAILS", message: "EDIT_PATIENT_DETAILS_MESSAGE"},
-    "ACCESSED_REGISTRATION_SECOND_PAGE": {eventType: "ACCESSED_REGISTRATION_SECOND_PAGE", message: "ACCESSED_REGISTRATION_SECOND_PAGE_MESSAGE"},
-    "VIEWED_PATIENT_DETAILS": {eventType: "VIEWED_PATIENT_DETAILS", message: "VIEWED_PATIENT_DETAILS_MESSAGE"},
-    "PRINT_PATIENT_STICKER": {eventType: "PRINT_PATIENT_STICKER", message: "PRINT_PATIENT_STICKER_MESSAGE"},
-
-    "VIEWED_CLINICAL_PATIENT_SEARCH": {eventType: "VIEWED_CLINICAL_PATIENT_SEARCH", message: "VIEWED_PATIENT_SEARCH_MESSAGE"},
-    "VIEWED_CLINICAL_DASHBOARD": {eventType: "VIEWED_CLINICAL_DASHBOARD", message: "VIEWED_CLINICAL_DASHBOARD_MESSAGE"},
-    "VIEWED_OBSERVATIONS_TAB": {eventType: "VIEWED_OBSERVATIONS_TAB", message: "VIEWED_OBSERVATIONS_TAB_MESSAGE"},
-    "VIEWED_SHAREDHEALTHRECORD_TAB": {eventType: "VIEWED_SHAREDHEALTHRECORD_TAB", message:"VIEWED_SHAREDHEALTHRECORD_TAB_MESSAGE"},
-    "VIEWED_DIAGNOSIS_TAB": {eventType: "VIEWED_DIAGNOSIS_TAB", message: "VIEWED_DIAGNOSIS_TAB_MESSAGE"},
-    "VIEWED_TREATMENT_TAB": {eventType: "VIEWED_TREATMENT_TAB", message: "VIEWED_TREATMENT_TAB_MESSAGE"},
-    "VIEWED_DISPOSITION_TAB": {eventType: "VIEWED_DISPOSITION_TAB", message: "VIEWED_DISPOSITION_TAB_MESSAGE"},
-    "VIEWED_DASHBOARD_SUMMARY": {eventType: "VIEWED_DASHBOARD_SUMMARY", message: "VIEWED_DASHBOARD_SUMMARY_MESSAGE"},
-    "VIEWED_ORDERS_TAB": {eventType: "VIEWED_ORDERS_TAB", message: "VIEWED_ORDERS_TAB_MESSAGE"},
-    "VIEWED_BACTERIOLOGY_TAB": {eventType: "VIEWED_BACTERIOLOGY_TAB", message: "VIEWED_BACTERIOLOGY_TAB_MESSAGE"},
-    "VIEWED_INVESTIGATION_TAB": {eventType: "VIEWED_INVESTIGATION_TAB", message: "VIEWED_INVESTIGATION_TAB_MESSAGE"},
-    "VIEWED_SUMMARY_PRINT": {eventType: "VIEWED_SUMMARY_PRINT", message: "VIEWED_SUMMARY_PRINT_MESSAGE"},
-    "VIEWED_VISIT_DASHBOARD": {eventType: "VIEWED_VISIT_DASHBOARD", message: "VIEWED_VISIT_DASHBOARD_MESSAGE"},
-    "VIEWED_VISIT_PRINT": {eventType: "VIEWED_VISIT_PRINT", message: "VIEWED_VISIT_PRINT_MESSAGE"},
-    "VIEWED_DASHBOARD_OBSERVATION": {eventType: "VIEWED_DASHBOARD_OBSERVATION", message: "VIEWED_DASHBOARD_OBSERVATION_MESSAGE"},
-    "VIEWED_PATIENTPROGRAM": {eventType: "VIEWED_PATIENTPROGRAM", message: "VIEWED_PATIENTPROGRAM_MESSAGE"},
-
-    "RUN_REPORT": {eventType: "RUN_REPORT", message: "RUN_REPORT_MESSAGE"}
-};
-
-'use strict';
-
-angular.module('bahmni.adt')
-    .controller('BedManagementController', [
-        '$scope', '$rootScope', '$stateParams', 'spinner', 'wardService', 'backlinkService',
-        function ($scope, $rootScope, $stateParams, spinner, wardService, backlinkService) {
-            $scope.wards = null;
-            $scope.encounterUuid = $stateParams.encounterUuid;
-            $scope.visitUuid = $stateParams.visitUuid;
-
-            var init = function () {
-                loadAllWards();
-                $scope.$watch(function () {
-                    return $rootScope.bedDetails;
-                }, function (newValue, oldValue) {
-                    if (newValue !== oldValue) {
-                        loadAllWards();
+            $scope.admitConfirmation = function () {
+                bedService.getCompleteBedDetailsByBedId($rootScope.selectedBedInfo.bed.bedId).then(function (response) {
+                    var bedDetails = response.data;
+                    if (bedDetails.patients.length) {
+                        showErrorMessage(bedDetails);
+                        reloadStateWithContextParams();
+                        return;
+                    }
+                    if (hideStartNewVisitPopUp && $scope.visitSummary && getVisitTypeUuid($scope.visitSummary.visitType) !== defaultVisitTypeUuid) {
+                        $scope.closeCurrentVisitAndStartNewVisit();
+                    } else {
+                        createEncounterAndContinue();
+                        $scope.cancelConfirmationDialog();
                     }
                 });
             };
+        }
+    ]);
 
-            var loadAllWards = function () {
-                spinner.forPromise(wardService.getWardsList().success(function (wardsList) {
-                    $scope.wards = wardsList.results;
-                }));
+'use strict';
+
+angular.module('bahmni.ipd')
+    .controller('WardController', ['$scope', '$rootScope', '$stateParams', '$state',
+        function ($scope, $rootScope, $stateParams, $state) {
+            var init = function () {
+                if ($stateParams.context && $stateParams.context.roomName) {
+                    expandAdmissionMasterForRoom($stateParams.context.roomName);
+                } else if ($rootScope.bedDetails) {
+                    expandAdmissionMasterForRoom($rootScope.bedDetails.physicalLocationName);
+                }
             };
 
-            $scope.$on('$stateChangeSuccess', function () {
-                backlinkService.addUrl({
-                    url: "#/patient/" + $scope.patient.uuid + "/visit/" + $scope.visitUuid + "/",
-                    title: "Back to IPD dashboard",
-                    icon: "fa-medkit fa-bed fa-white"
+            var getSelectedRoom = function (roomName) {
+                var admissionRoom = _.filter($scope.ward.rooms, function (room) {
+                    return room.name === roomName;
                 });
+                $scope.room = admissionRoom[0];
+                $scope.activeRoom = $scope.room.name;
+                $scope.roomSelected = true;
+            };
+
+            $scope.$on("event:deselectWards", function (event, ward) {
+                $scope.activeRoom = null;
             });
+
+            var updateSelectedBedInfo = function (roomName) {
+                $rootScope.selectedBedInfo.roomName = roomName;
+                $rootScope.selectedBedInfo.bed = undefined;
+            };
+
+            $scope.onSelectRoom = function (roomName) {
+                updateSelectedBedInfo(roomName);
+                getSelectedRoom(roomName);
+                $scope.$emit("event:roomSelected", roomName);
+                $scope.$broadcast("event:changeBedList", roomName);
+                $scope.activeRoom = roomName;
+                goToBedManagement();
+                if (window.scrollY > 0) {
+                    window.scrollTo(0, 0);
+                }
+            };
+
+            var expandAdmissionMasterForRoom = function (roomName) {
+                updateSelectedBedInfo(roomName);
+                getSelectedRoom(roomName);
+            };
+
+            $scope.$on("event:departmentChanged", function (event) {
+                $scope.roomSelected = false;
+            });
+
+            var goToBedManagement = function () {
+                if ($state.current.name === "bedManagement.bed") {
+                    var options = {};
+                    options['context'] = {
+                        department: {
+                            uuid: $scope.ward.uuid,
+                            name: $scope.ward.name
+                        },
+                        roomName: $rootScope.selectedBedInfo.roomName
+                    };
+                    options['dashboardCachebuster'] = Math.random();
+                    $state.go("bedManagement", options);
+                }
+            };
 
             init();
         }]);
 
 'use strict';
 
-angular.module('bahmni.adt')
-    .controller('WardsController', ['$scope', '$rootScope', '$window', '$document', 'spinner', 'wardService',
-        function ($scope, $rootScope, $window, $document, spinner, wardService) {
-            $scope.wards = null;
-
+angular.module('bahmni.ipd')
+    .controller('RoomController', ['$scope', '$rootScope', '$state', '$translate', 'appService',
+        function ($scope, $rootScope, $state, $translate, appService) {
             var init = function () {
-                return loadAllWards();
-            };
+                $scope.defaultTags = ['AVAILABLE', 'OCCUPIED'];
+                var appDescriptor = appService.getAppDescriptor();
+                $rootScope.bedTagsColorConfig = appDescriptor.getConfigValue("colorForTags") || [];
+                $rootScope.currentView = $rootScope.currentView || "Grid";
+                $scope.currentView = $rootScope.currentView;
 
-            var loadAllWards = function () {
-                return wardService.getWardsList().success(function (wardsList) {
-                    $scope.wards = wardsList.results;
-                });
-            };
-            spinner.forPromise(init());
-        }]);
-
-'use strict';
-
-angular.module('bahmni.adt')
-    .controller('WardController', ['$scope', '$rootScope', '$window', 'spinner', 'wardService', 'bedManagementService', 'userService',
-        function ($scope, $rootScope, $window, spinner, wardService, bedManagementService, userService) {
-            var init = function () {
-                if ($scope.readOnly) {
-                    $scope.expanded = $rootScope.currentUser.isFavouriteWard($scope.ward.ward.name);
-                    $scope.showWardList();
-                } else {
-                    $scope.expanded = ($rootScope.bedDetails && $rootScope.bedDetails.wardUuid === $scope.ward.ward.uuid);
-                    $scope.showWardLayout();
-                }
-            };
-
-            $scope.toggleExpandState = function () {
-                $scope.expanded = !$scope.expanded;
-                if (!$scope.expanded) {
-                    $scope.showWardList();
-                }
-                if ($scope.readOnly) {
-                    $rootScope.currentUser.toggleFavoriteWard($scope.ward.ward.name);
-                    userService.savePreferences();
+                if ($rootScope.bedDetails) {
+                    $scope.oldBedNumber = $rootScope.bedDetails.bedNumber;
+                    _.some($scope.room.beds, function (row) {
+                        var selectedBed = _.filter(row, function (bed) {
+                            return bed.bed.bedId === $rootScope.bedDetails.bedId;
+                        });
+                        if (selectedBed.length) {
+                            $scope.selectedBed = selectedBed[0].bed;
+                            return true;
+                        }
+                    });
+                    $rootScope.selectedBedInfo.bed = $scope.selectedBed;
+                    if ($state.current.name !== "bedManagement.patient") {
+                        $scope.oldBedNumber = undefined;
+                    }
                 }
             };
 
             $scope.toggleWardView = function () {
-                if ($scope.currentView === 'wardLayout') {
-                    $scope.showWardList();
-                } else {
-                    $scope.showWardLayout();
+                $rootScope.currentView = ($rootScope.currentView === "Grid") ? "List" : "Grid";
+                $scope.currentView = $rootScope.currentView;
+            };
+
+            $scope.getTagName = function (tag) {
+                if (tag === 'AVAILABLE') {
+                    return $translate.instant("KEY_AVAILABLE");
                 }
-                expandView();
-            };
-
-            $scope.showWardLayout = function () {
-                $scope.currentView = "wardLayout";
-            };
-
-            $scope.showWardList = function () {
-                $scope.currentView = "wardList";
-            };
-
-            var expandView = function () {
-                if (!$scope.expanded) {
-                    $scope.toggleExpandState();
+                else if (tag === 'OCCUPIED') {
+                    return $translate.instant("KEY_OCCUPIED");
                 }
             };
 
@@ -10471,279 +10555,488 @@ angular.module('bahmni.adt')
 
 'use strict';
 
-angular.module('bahmni.adt')
-    .controller('WardListController', ['$scope', 'queryService', 'spinner', '$q', '$window', '$stateParams', 'appService', '$rootScope',
-        function ($scope, queryService, spinner, $q, $window, $stateParams, appService, $rootScope) {
-            $scope.gotoPatientDashboard = function (patientUuid, visitUuid) {
-                var options = $.extend({}, $stateParams);
-                $.extend(options, {patientUuid: patientUuid, visitUuid: visitUuid || null});
-                $window.location = appService.getAppDescriptor().formatUrl(Bahmni.ADT.Constants.ipdDashboard, options, true);
-            };
+angular.module('bahmni.ipd').controller('editTagsController', ['$scope', '$rootScope', '$q', 'ngDialog', 'spinner', 'messagingService', 'bedTagMapService',
+    function ($scope, $rootScope, $q, ngDialog, spinner, messagingService, bedTagMapService) {
+        $scope.allTags = [];
+        var assignedTags = [];
+        var unAssignedTags = [];
+        var deltaDeSelected = [];
+        var selectedValues = [];
+        var deltaSelected = [];
+        $scope.values = [];
 
-            var getTableDetails = function () {
-                var params = {
-                    q: "emrapi.sqlGet.wardsListDetails",
-                    v: "full",
-                    location_name: $scope.ward.ward.name
+        var getTagsInfo = function () {
+            var bedTagMaps = _.map($rootScope.selectedBedInfo.bed.bedTagMaps, function (tagMap) {
+                return {
+                    tagMapUuid: tagMap.uuid,
+                    id: tagMap.bedTag.id,
+                    name: tagMap.bedTag.name,
+                    uuid: tagMap.bedTag.uuid
                 };
+            });
+            return bedTagMaps;
+        };
 
-                return queryService.getResponseFromQuery(params).then(function (response) {
-                    $scope.tableDetails = Bahmni.ADT.WardDetails.create(response.data, $rootScope.diagnosisStatus);
-                    $scope.tableHeadings = $scope.tableDetails.length > 0 ? Object.keys($scope.tableDetails[0]) : [];
+        var init = function () {
+            assignedTags = getTagsInfo();
+            bedTagMapService.getAllBedTags().then(function (response) {
+                $scope.allTags = response.data.results;
+                selectedValues = getTagsInfo();
+                unAssignedTags = _.xorBy($scope.allTags, assignedTags, 'uuid');
+                $scope.values = selectedValues;
+            });
+        };
+
+        $scope.search = function (query) {
+            var matchingAnswers = [];
+            var unselectedValues = _.xorBy($scope.allTags, selectedValues, 'uuid');
+            _.forEach(unselectedValues, function (answer) {
+                if (typeof answer.name != "object" && answer.name.toLowerCase().indexOf(query.toLowerCase()) !== -1) {
+                    matchingAnswers.push(answer);
+                }
+            });
+            return _.uniqBy(matchingAnswers, 'uuid');
+        };
+        $scope.focusOnTheTest = function () {
+            var autoSelectInput = $("input.input");
+            autoSelectInput[0].focus();
+        };
+        $scope.addItem = function (item) {
+            var find = _.find(unAssignedTags, {uuid: item.uuid});
+            var itemList = find ? [find] : [];
+            deltaSelected = _.xorBy(deltaSelected, itemList, 'uuid');
+            selectedValues = _.union(assignedTags, deltaSelected, 'uuid');
+            deltaDeSelected = _.remove(deltaDeSelected, function (value) {
+                return value.uuid !== item.uuid;
+            });
+            selectedValues = _.xorBy(selectedValues, deltaDeSelected, 'uuid');
+        };
+
+        $scope.removeItem = function (item) {
+            var find = _.find(assignedTags, {uuid: item.uuid});
+            var itemList = find ? [find] : [];
+            deltaDeSelected = _.xorBy(deltaDeSelected, itemList, 'uuid');
+            deltaSelected = _.filter(deltaSelected, function (value) {
+                return value.uuid !== item.uuid;
+            });
+            selectedValues = _.filter(selectedValues, function (value) {
+                return value.uuid !== item.uuid;
+            });
+        };
+
+        $scope.removeFreeTextItem = function () {
+            var value = $("input.input").val();
+            if (_.isEmpty($scope.search(value))) {
+                $("input.input").val("");
+            }
+        };
+
+        var assignTagsToBed = function () {
+            _.each(deltaSelected, function (bedTag) {
+                bedTagMapService.assignTagToABed(bedTag.id, $rootScope.selectedBedInfo.bed.bedId).then(function (response) {
+                    var bedTags = $rootScope.selectedBedInfo.bed.bedTagMaps || [];
+                    var bedTagMapEntry = {uuid: response.data.uuid, bedTag: bedTag};
+                    bedTags.push(bedTagMapEntry);
                 });
-            };
-            spinner.forPromise(getTableDetails());
-        }]);
-
-'use strict';
-
-angular.module('bahmni.adt')
-    .controller('WardLayoutController', ['$scope', '$rootScope', '$window', 'spinner', 'wardService', 'bedManagementService', 'bedService', 'messagingService', 'appService', '$document', '$element',
-        function ($scope, $rootScope, $window, spinner, wardService, bedManagementService, bedService, messagingService, appService, $document, $element) {
-            $scope.selectedBed = null;
-            var maxPatientsConfig = appService.getAppDescriptor().getConfig("maxPatientsPerBed");
-            var maxPatientsPerBed = maxPatientsConfig ? maxPatientsConfig.value : 3;
-
-            var init = function () {
-                $element.find('.bed-info').hide();
-                spinner.forPromise(getBeds());
-
-                $document.bind('click', function () {
-                    $scope.hideBedInfoPopUp();
-                });
-            };
-
-            var getBeds = function () {
-                return wardService.bedsForWard($scope.ward.ward.uuid).success(function (result) {
-                    var groupedLayoutsByLocation = _.groupBy(result.bedLayouts, 'location');
-                    $scope.ward.layouts = [];
-                    _.map(groupedLayoutsByLocation, function (value, key) {
-                        var layout = {
-                            name: key,
-                            beds: bedManagementService.createLayoutGrid(value)
-                        };
-                        $scope.ward.layouts.push(layout);
+            });
+            ngDialog.close();
+        };
+        var unAssignTagsFromBed = function () {
+            _.each(deltaDeSelected, function (bedTag) {
+                bedTagMapService.unAssignTagFromTheBed(bedTag.tagMapUuid).then(function () {
+                    $rootScope.selectedBedInfo.bed.bedTagMaps = _.filter($rootScope.selectedBedInfo.bed.bedTagMaps, function (bedTagMap) {
+                        return bedTagMap.bedTag.uuid !== bedTag.uuid;
                     });
                 });
-            };
-
-            $scope.assignBed = function (bed) {
-                if (bed.patientInfo && bed.patientInfo.length >= maxPatientsPerBed) {
-                    alert("A max of " + maxPatientsPerBed + " patients are allowed per bed. Please select other bed.");
-                    return;
-                }
-                if (shouldTransfer(bed)) {
-                    clearAssignmentError();
-                    assignBedToPatient(bed, $scope.encounterUuid);
-                }
-            };
-
-            var shouldTransfer = function (bed) {
-                if (bed.patientInfo) {
-                    return confirm("This bed is already occupied. Do you want to assign another patient to the same bed?");
-                }
-                return true;
-            };
-
-            var clearAssignmentError = function () {
-                $element.find('.bed-info').hide();
-            };
-
-            var assignBedToPatient = function (bed, encUuid) {
-                spinner.forPromise(bedService.assignBed(bed.bed.bedId, $scope.patientUuid, encUuid).success(function () {
-                    $rootScope.bed = bed.bed;
-                    bedService.setBedDetailsForPatientOnRootScope($scope.patientUuid);
-                    messagingService.showMessage('info', "Bed " + bed.bed.bedNumber + " is assigned successfully");
-                    $element.find('.bed-info').hide();
-                }));
-            };
-
-            $scope.getCurrentBed = function () {
-                return $rootScope.bedDetails;
-            };
-
-            $scope.fetchBedInfo = function (cell) {
-                if (!cell.available && !cell.empty && !cell.patientInfo) {
-                    spinner.forPromise(bedService.getBedInfo(cell.bed.bedId).success(function (data) {
-                        cell.patientInfo = [];
-                        _.each(data.patients, function (patient) {
-                            cell.patientInfo.push({
-                                "name": patient.person.personName.givenName + " " + (patient.person.personName.familyName === null ? "" : patient.person.personName.familyName),
-                                "identifier": patient.identifiers[0].identifier,
-                                "gender": patient.person.gender
-                            });
-                        });
-                    }));
-                }
-            };
-
-            $scope.hideBedInfoPopUp = function () {
-                $scope.selectedBed = null;
-                $scope.$apply();
-            };
-
-            $scope.setBedDetails = function (cell) {
-                $element.find('.bed-info').hide();
-                $scope.selectedBed = cell;
-                $scope.$apply();
-                if (!cell.empty) {
-                    $element.find('.bed-info').show();
-                }
-            };
-
-            $scope.highlightCurrentPatient = function (cell) {
-                var currentBed = $scope.getCurrentBed();
-                return !$scope.readOnly && (currentBed && currentBed.bedId === cell.bed.bedId);
-            };
-
-            init();
-        }]);
-
-'use strict';
-
-Bahmni.ADT.WardDetails = {};
-
-Bahmni.ADT.WardDetails.create = function (details, diagnosisStatus) {
-    var detailsMap = {};
-    var attributesToCopy = ["Bed", "Name", "Id", "Name", "Age", "District", "Village", "Admission By", "Admission Time", "Disposition By", "Disposition Time", "ADT Notes"];
-    var diagnosisProperties = ["Diagnosis", "Diagnosis Certainty", "Diagnosis Order", "Diagnosis Status", "Diagnosis Provider", "Diagnosis Datetime"];
-    var hiddenAttributesToCopy = ["Patient Uuid", "Visit Uuid"];
-
-    var copyProperties = function (newObject, oldObject, properties) {
-        properties.forEach(function (property) {
-            newObject[property] = oldObject[property];
-        });
-        return newObject;
-    };
-
-    var removeDuplicateRuledOutDiagnosis = function (rows) {
-        rows.forEach(function (row) {
-            var ruledOutDiagnoses = _.map(_.filter(row.Diagnosis, {'ruledOut': true}), 'Diagnosis');
-            _.remove(row.Diagnosis, function (diagnosisObj) {
-                return _.includes(ruledOutDiagnoses, diagnosisObj.Diagnosis) && !diagnosisObj.ruledOut;
             });
-        });
-        return rows;
-    };
-
-    details.forEach(function (detail) {
-        detailsMap[detail.Id] = detailsMap[detail.Id] || copyProperties({}, detail, attributesToCopy);
-        detailsMap[detail.Id].Diagnosis = detailsMap[detail.Id].Diagnosis || [];
-        if (detail.Diagnosis !== undefined) {
-            var diagnosis = copyProperties({}, detail, diagnosisProperties);
-            diagnosis.ruledOut = diagnosis["Diagnosis Status"] === "Ruled Out Diagnosis";
-            if (diagnosis.ruledOut) {
-                diagnosis.diagnosisStatus = diagnosisStatus;
-            }
-            detailsMap[detail.Id].Diagnosis.push(diagnosis);
-        }
-        var hiddenProperties = copyProperties({}, detail, hiddenAttributesToCopy);
-        detailsMap[detail.Id].hiddenAttributes = detailsMap[detail.Id].hiddenAttributes || {};
-        detailsMap[detail.Id].hiddenAttributes.patientUuid = hiddenProperties["Patient Uuid"];
-        detailsMap[detail.Id].hiddenAttributes.visitUuid = hiddenProperties["Visit Uuid"];
-    });
-
-    return removeDuplicateRuledOutDiagnosis(_.values(detailsMap));
-};
-
-'use strict';
-
-angular.module('bahmni.adt')
-    .directive('wardList', [function () {
-        return {
-            restrict: 'E',
-            controller: 'WardListController',
-            scope: {
-                ward: "="
-            },
-            templateUrl: "../adt/views/wardList.html"
         };
+        $scope.updateTagsForTheSelectedBed = function () {
+            spinner.forPromise($q.all(unAssignTagsFromBed(), assignTagsToBed()).then(function () {
+                messagingService.showMessage('info', "Tags Updated Successfully");
+            }));
+        };
+
+        $scope.cancelConfirmationDialog = function () {
+            ngDialog.close();
+        };
+
+        $scope.disableTagButton = function (tag) {
+            var selectedTag = _.filter($scope.values, function (tagEntry) {
+                return _.isMatch(tagEntry, {uuid: tag.uuid});
+            });
+            return selectedTag.length > 0;
+        };
+
+        $scope.onClickingTheTag = function (tag) {
+            $scope.addItem(tag);
+            $scope.values = selectedValues;
+        };
+
+        init();
     }]);
 
 'use strict';
 
-angular.module('bahmni.adt')
-    .directive('adtPatientSearch', ['$timeout', function ($timeout) {
-        var link = function ($scope, element) {
-            $timeout(function () {
-                element.find('.tabs ul').prepend($('.ward-list-tab'));
-                element.find('.tab-content').prepend($('#ward-list'));
-                if ($scope.isBedManagementEnabled && !$scope.search.navigated) {
-                    $scope.search.searchType = undefined;
-                }
-            });
-        };
+angular.module('bahmni.ipd')
+    .controller('RoomListController', ['$scope', 'queryService', 'appService',
+        function ($scope, queryService, appService) {
+            var getRoomListDetails = function (roomName) {
+                var wardListSqlSearchHandler = appService.getAppDescriptor().getConfigValue("wardListSqlSearchHandler");
 
+                var params = {
+                    q: wardListSqlSearchHandler,
+                    v: "full",
+                    location_name: roomName
+                };
+
+                return queryService.getResponseFromQuery(params).then(function (response) {
+                    $scope.tableDetails = response.data;
+                    $scope.tableHeadings = $scope.tableDetails.length > 0 ? Object.keys($scope.tableDetails[0]) : [];
+                });
+            };
+
+            $scope.$on("event:changeBedList", function (event, roomName) {
+                getRoomListDetails(roomName);
+            });
+
+            $scope.sortTableDataBy = function (sortColumn) {
+                var nonEmptyObjects = _.filter($scope.tableDetails, function (entry) {
+                    return entry[sortColumn];
+                });
+                var emptyObjects = _.difference($scope.tableDetails, nonEmptyObjects);
+                var sortedNonEmptyObjects = _.sortBy(nonEmptyObjects, sortColumn);
+                if ($scope.reverseSort) {
+                    sortedNonEmptyObjects.reverse();
+                }
+                $scope.tableDetails = sortedNonEmptyObjects.concat(emptyObjects);
+                $scope.sortColumn = sortColumn;
+                $scope.reverseSort = !$scope.reverseSort;
+            };
+
+            var init = function () {
+                $scope.reverseSort = false;
+                return getRoomListDetails($scope.room.name);
+            };
+            init();
+        }]);
+
+'use strict';
+
+angular.module('bahmni.ipd')
+    .controller('RoomGridController', ['$scope', '$rootScope', '$state', '$translate',
+        function ($scope, $rootScope, $state, $translate) {
+            $scope.getColorForTheTag = function (bed) {
+                _.forEach($rootScope.bedTagsColorConfig, function (tagConfig) {
+                    if (bed.bedTagMaps.length >= 2) {
+                        if ($translate.instant(tagConfig.name) === "MultiTag") {
+                            bed.bedTagMaps[0].bedTag.color = tagConfig.color;
+                        }
+                    } else if (angular.isDefined(bed.bedTagMaps[0]) && $translate.instant(tagConfig.name) === bed.bedTagMaps[0].bedTag.name) {
+                        bed.bedTagMaps[0].bedTag.color = tagConfig.color;
+                    }
+                });
+                setDefaultTagColor(bed);
+            };
+            var setDefaultTagColor = function (bed) {
+                if (angular.isDefined(bed.bedTagMaps[0]) && bed.bedTagMaps[0].bedTag.color === undefined) {
+                    bed.bedTagMaps[0].bedTag.color = "#D3D3D3";
+                }
+            };
+
+            $scope.onSelectBed = function (bed) {
+                if ($state.current.name === "bedManagement.bed" || $state.current.name === "bedManagement") {
+                    if (bed.status === "AVAILABLE") {
+                        $rootScope.patient = undefined;
+                    }
+                    $rootScope.selectedBedInfo.bed = bed;
+                    var options = {bedId: bed.bedId};
+                    $state.go("bedManagement.bed", options);
+                }
+                else if ($state.current.name === "bedManagement.patient") {
+                    $rootScope.selectedBedInfo.bed = bed;
+                    if (bed.patient) {
+                        $scope.$emit("event:updateSelectedBedInfoForCurrentPatientVisit", bed.patient.uuid);
+                    }
+                }
+            };
+        }]);
+
+'use strict';
+
+angular.module('bahmni.ipd')
+    .directive('adtPatientSearch', ['$timeout', function ($timeout) {
         return {
             restrict: 'E',
             controller: 'PatientsListController',
-            link: link,
             templateUrl: '../common/patient-search/views/patientsList.html'
         };
     }]);
 
 'use strict';
 
-angular.module('bahmni.adt')
+angular.module('bahmni.ipd')
+    .directive('adt', [function () {
+        return {
+            restrict: 'E',
+            controller: "AdtController",
+            scope: {
+                patient: "=",
+                encounterConfig: "=?bind",
+                bed: "="
+            },
+            templateUrl: "../bedmanagement/views/adt.html"
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.ipd')
     .directive('ward', [function () {
         return {
             restrict: 'E',
             controller: "WardController",
             scope: {
-                ward: "=",
-                readOnly: "=",
-                encounterUuid: "=",
-                patientUuid: "=",
-                visitUuid: "="
+                ward: "="
             },
-            templateUrl: "../adt/views/ward.html"
+            templateUrl: "../bedmanagement/views/ward.html"
         };
     }]);
 
 'use strict';
 
-angular.module('bahmni.adt')
-    .directive('wardLayout', [ function () {
+angular.module('bahmni.ipd')
+    .directive('room', [function () {
         return {
             restrict: 'E',
-            controller: "WardLayoutController",
+            controller: "RoomController",
             scope: {
-                ward: "=",
-                readOnly: "=",
-                encounterUuid: "=",
-                patientUuid: "=",
-                visitUuid: "="
+                room: "="
             },
-            templateUrl: "../adt/views/wardLayout.html"
+            templateUrl: "../bedmanagement/views/room.html"
         };
     }]);
 
 'use strict';
 
-angular.module('bahmni.adt')
-    .directive('bedAssignmentDialog', function () {
-        return {
-            restrict: 'A',
-            link: function (scope, elem) {
-                elem.bind('click', function (e) {
-                    scope.setBedDetails(scope.cell);
-                    var leftPos = $(elem).offset().left - 132;
-                    var topPos = $(elem).offset().top;
-                    var bedInfoElem = $(elem).closest('.ward').find(".bed-info");
-                    bedInfoElem.css('left', leftPos);
-                    bedInfoElem.css('top', topPos);
-                    e.stopPropagation();
+angular.module('bahmni.ipd')
+    .directive('editAdtObservations', ['$rootScope', '$state', 'spinner', 'encounterService', 'observationsService', 'sessionService', 'conceptSetService', 'conceptSetUiConfigService', 'messagingService',
+        function ($rootScope, $state, spinner, encounterService, observationsService, sessionService, conceptSetService, conceptSetUiConfigService, messagingService) {
+            var controller = function ($scope) {
+                $scope.assignBedsPrivilege = Bahmni.IPD.Constants.assignBedsPrivilege;
+
+                var getEncounterDataFor = function (obs, encounterTypeUuid, visitTypeUuid) {
+                    var encounterData = {};
+                    encounterData.patientUuid = $scope.patient.uuid;
+                    encounterData.encounterTypeUuid = encounterTypeUuid;
+                    encounterData.visitTypeUuid = visitTypeUuid;
+                    encounterData.observations = angular.copy(obs);
+                    encounterData.locationUuid = sessionService.getLoginLocationUuid();
+                    return encounterData;
+                };
+
+                var toggleDisabledObservation = function (editMode) {
+                    $scope.editMode = editMode;
+                    _.each($scope.observations[0].groupMembers, function (member) {
+                        member.disabled = !editMode;
+                    });
+                };
+
+                var getNonEmptyObservations = function () {
+                    var observations = angular.copy($scope.observations[0]);
+                    observations.groupMembers = _.filter(observations.groupMembers, function (member) {
+                        return !_.isEmpty(member.value);
+                    });
+                    if (_.isEmpty(observations.groupMembers)) {
+                        messagingService.showMessage("error", "Date of Discharge and Reason for discharge cannot be empty.");
+                        setValuesForObservations($scope.savedObservations);
+                        return [];
+                    }
+                    return [observations];
+                };
+
+                $scope.edit = function () {
+                    $scope.savedObservations = angular.copy($scope.observations[0]);
+                    toggleDisabledObservation(true);
+                };
+
+                $scope.save = function () {
+                    toggleDisabledObservation(false);
+                    var observations = getNonEmptyObservations();
+                    if ($scope.visitTypeUuid !== null && !_.isEmpty(observations)) {
+                        var encounterData = getEncounterDataFor(observations, $rootScope.encounterConfig.getConsultationEncounterTypeUuid(), $scope.visitTypeUuid);
+                        return encounterService.create(encounterData).then(function () {
+                            toggleDisabledObservation(false);
+                        });
+                    }
+                };
+
+                $scope.cancel = function () {
+                    setValuesForObservations($scope.savedObservations);
+                    toggleDisabledObservation(false);
+                };
+
+                var resetObservationValues = function () {
+                    _.each($scope.observations[0].groupMembers, function (member) {
+                        member.value = undefined;
+                    });
+                };
+
+                var fetchLatestObsFor = function (conceptNames) {
+                    return observationsService.fetch($scope.patient.uuid, conceptNames, "latest", null, null, null, null, null).then(function (response) {
+                        resetObservationValues();
+                        toggleDisabledObservation(false);
+                        if (response.data.length) {
+                            setValuesForObservations(response.data[0]);
+                        }
+                    });
+                };
+
+                $scope.$watch("patient", function (oldValue, newValue) {
+                    if (oldValue !== newValue) {
+                        return fetchLatestObsFor($scope.conceptSetName);
+                    }
                 });
-            }
-        };
-    });
+
+                var getConceptSetByConceptName = function (conceptSetName) {
+                    return conceptSetService.getConcept({name: conceptSetName, v: "bahmni"}).then(function (response) {
+                        return response.data.results[0];
+                    });
+                };
+
+                var constructObservationTemplate = function (conceptSetName) {
+                    return getConceptSetByConceptName(conceptSetName).then(function (conceptSet) {
+                        var observationMapper = new Bahmni.ConceptSet.ObservationMapper();
+                        return observationMapper.map([], conceptSet, conceptSetUiConfigService.getConfig());
+                    });
+                };
+
+                var setValuesForObservations = function (obsGroup) {
+                    $scope.observations[0].value = obsGroup.value;
+                    _.each(obsGroup.groupMembers, function (obsGroupMember) {
+                        _.each($scope.observations[0].groupMembers, function (member) {
+                            if (member.concept.uuid === obsGroupMember.concept.uuid) {
+                                member.value = obsGroupMember.value;
+                                member.disabled = true;
+                            }
+                        });
+                    });
+                };
+
+                var init = function () {
+                    $scope.promiseResolved = false;
+                    $scope.observations = [];
+                    $scope.editMode = false;
+                    $scope.onBedManagement = ($state.current && $state.current.name === "bedManagement.bed");
+                    return constructObservationTemplate($scope.conceptSetName).then(function (observation) {
+                        $scope.observations[0] = observation;
+                        toggleDisabledObservation(false);
+                        $scope.promiseResolved = true;
+                        if ($rootScope.patient && $rootScope.bedDetails) {
+                            return observationsService.fetch($scope.patient.uuid, [$scope.conceptSetName], "latest", 1, null, null, null, null).then(function (response) {
+                                if (response.data.length) {
+                                    setValuesForObservations(response.data[0]);
+                                }
+                            });
+                        }
+                    });
+                };
+
+                spinner.forPromise(init());
+            };
+
+            return {
+                restrict: 'E',
+                scope: {
+                    patient: "=",
+                    conceptSetName: "=",
+                    editMode: "=",
+                    visitTypeUuid: "="
+                },
+                controller: controller,
+                templateUrl: "views/editAdtObservations.html"
+            };
+        }]);
 
 'use strict';
 
-angular.module('bahmni.adt')
+angular.module('bahmni.ipd')
+    .directive('roomList', [function () {
+        return {
+            restrict: 'E',
+            controller: 'RoomListController',
+            scope: {
+                room: "="
+            },
+            templateUrl: "../bedmanagement/views/roomList.html"
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.ipd')
+    .directive('roomGrid', [function () {
+        return {
+            restrict: 'E',
+            controller: 'RoomGridController',
+            scope: {
+                room: "="
+            },
+            templateUrl: "../bedmanagement/views/roomGrid.html"
+        };
+    }]);
+
+"use strict";
+
+angular.module('bahmni.ipd')
+    .directive('backLinksCacheBuster', ['$state', '$window', function ($state, $window) {
+        var controller = function ($scope, $state, $window) {
+            $scope.navigationLinks = $state.current.data.navigationLinks;
+            $scope.homeBackLink = $state.current.data.homeBackLink;
+            $scope.isCurrentState = function (link) {
+                if (($state.current.name === "home" || $state.current.name === "bedManagement.patient") && link.name === "ADMIT_HOME_KEY") {
+                    return true;
+                } else if (($state.current.name === "bedManagement" || $state.current.name === "bedManagement.bed") && link.name === "BED_MANAGEMENT_KEY") {
+                    return true;
+                }
+            };
+            $scope.linkAction = function (type, value, params) {
+                if (type === 'state') {
+                    onClickState(value, params);
+                } else {
+                    $window.location.href = value;
+                }
+            };
+
+            var onClickState = function (value, params) {
+                if (!params) {
+                    params = {};
+                }
+                params['dashboardCachebuster'] = Math.random();
+                $state.go(value, params);
+            };
+        };
+
+        return {
+            restrict: 'E',
+            controller: controller,
+            templateUrl: "views/backLinks.html",
+            scope: {
+                type: "=",
+                name: "=",
+                value: "=",
+                params: "=",
+                icon: "=",
+                accessKey: "="
+            }
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.ipd')
     .service('wardService', ['$http', function ($http) {
         this.bedsForWard = function (uuid) {
-            return $http.get(Bahmni.ADT.Constants.admissionLocationUrl + uuid, {
+            return $http.get(Bahmni.IPD.Constants.admissionLocationUrl + uuid, {
                 method: "GET",
                 params: {v: "full"},
                 withCredentials: true
@@ -10751,26 +11044,13 @@ angular.module('bahmni.adt')
         };
 
         this.getWardsList = function () {
-            return $http.get(Bahmni.ADT.Constants.admissionLocationUrl);
+            return $http.get(Bahmni.IPD.Constants.admissionLocationUrl);
         };
     }]);
 
 'use strict';
 
-angular.module('bahmni.adt')
-    .service('queryService', ['$http', function ($http) {
-        this.getResponseFromQuery = function (params) {
-            return $http.get(Bahmni.Common.Constants.sqlUrl, {
-                method: "GET",
-                params: params,
-                withCredentials: true
-            });
-        };
-    }]);
-
-'use strict';
-
-angular.module('bahmni.adt')
+angular.module('bahmni.ipd')
     .service('bedManagementService', [function () {
         var maxX = 1;
         var maxY = 1;
@@ -10792,7 +11072,10 @@ angular.module('bahmni.adt')
                         bed: {
                             bedId: bedLayout !== null && bedLayout.bedId,
                             bedNumber: bedLayout !== null && bedLayout.bedNumber,
-                            bedType: bedLayout !== null && bedLayout.bedType !== null && bedLayout.bedType.displayName
+                            bedType: bedLayout !== null && bedLayout.bedType !== null && bedLayout.bedType.displayName,
+                            bedTagMaps: bedLayout !== null && bedLayout.bedTagMaps,
+                            status: bedLayout !== null && bedLayout.status,
+                            patient: bedLayout !== null && bedLayout.patient
                         }
                     });
                 }
@@ -10831,5 +11114,43 @@ angular.module('bahmni.adt')
                 return false;
             }
             return bedLayout.status === "AVAILABLE";
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.ipd')
+    .service('queryService', ['$http', function ($http) {
+        this.getResponseFromQuery = function (params) {
+            return $http.get(Bahmni.Common.Constants.sqlUrl, {
+                method: "GET",
+                params: params,
+                withCredentials: true
+            });
+        };
+    }]);
+
+'use strict';
+
+angular.module('bahmni.ipd')
+    .service('bedTagMapService', ['$http', function ($http) {
+        this.getAllBedTags = function () {
+            return $http.get(Bahmni.IPD.Constants.getAllBedTags, {
+                params: {},
+                withCredentials: true
+            });
+        };
+
+        this.assignTagToABed = function (bedTagId, bedId) {
+            var requestPayload = {
+                "bedTag": {"id": bedTagId},
+                "bed": {"id": bedId}
+            };
+            var headers = {"Content-Type": "application/json", "Accept": "application/json"};
+            return $http.post(Bahmni.IPD.Constants.bedTagMapUrl, requestPayload, headers);
+        };
+
+        this.unAssignTagFromTheBed = function (bedTagMapUuid) {
+            return $http.delete(Bahmni.IPD.Constants.bedTagMapUrl + bedTagMapUuid);
         };
     }]);

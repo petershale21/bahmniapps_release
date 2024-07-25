@@ -1157,7 +1157,87 @@ angular.module('bahmni.common.appFramework')
                 });
                 return patient;
             };
-           
+           // Getting CAG dat from API - senekanet and shalet
+           this.getCAG = function (uuid) {
+                var cag = $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cag/" + uuid, {
+                method: "GET", 
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+               return cag;
+           };
+           // posting cag appointment to API - senekane
+           this.createAppointment = function (appointment) {
+                var createAppointmentApiUrl = Bahmni.Common.Constants.openmrsUrl+"/ws/rest/v1/appointment";
+                
+                return $http.post(createAppointmentApiUrl, appointment, {
+                    withCredentials: true,
+                    headers: {"Accept": "application/json", "Content-Type": "application/json"}
+                });
+            };
+           // getting visit data by uuid from API - senekanet
+            this.fetchingVisitDatabyUuid = function (uuid) {
+                return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/visit/"+uuid, {
+                    method: "GET", 
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    withCredentials: true
+                });
+                
+            };
+
+           this.getAllCags = function () {
+            return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cag/", {
+                method: "GET",
+                params: {v: "full"},
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+            
+        };
+
+        this.getCagVisit = function (patientUuid) {
+            return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cagVisit?attenderuuid="+patientUuid+'&isactive='+true, {
+                method: "GET",
+                params: {v: "full"},
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+             
+        };
+
+        this.createCagEncounter = function(cagEncounterData){
+            
+            return $http({
+                url: Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cagEncounter/",
+                method: 'POST',
+                params: {v: "full"},
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                data: angular.toJson(cagEncounterData)
+                })
+        }
+
+            this.getCagPatient = function(patientUuid){
+                var cagPatient = $http.get(
+                    Bahmni.Common.Constants.openmrsUrl + '/ws/rest/v1/cagVisit?attenderuuid='+patientUuid+'&isactive='+true,
+                    {
+                        method : "GET",
+                        params: {v: "full"},
+                        withCredentials: true
+                    }
+                );   
+                
+                return cagPatient;
+            }
 
             var loadTemplate = function (appDescriptor) {
                 var deferrable = $q.defer();
@@ -1379,7 +1459,7 @@ angular.module('bahmni.common.appFramework')
 
             // **************Function to be used to set and get flags****************
             let Regimen = '';
-            let isActiveSet = false; 
+            let isActiveSet = false;
             let isDeactivated = false;
             let Followupdate = '';
             let isOderhasBeenSaved = null;
@@ -1448,7 +1528,7 @@ angular.module('bahmni.common.appFramework')
             {
                 return savedFormName ;
             }
-            
+
             this.setIsFieldAutoFilled   = function (_isFieldAutoFilled ){
                 isFieldAutoFilled  = _isFieldAutoFilled ;
             }
@@ -1456,7 +1536,7 @@ angular.module('bahmni.common.appFramework')
             {
                 return isFieldAutoFilled ;
             }
-            
+
             //-------------------------------AHD Meds Flags------------------------------------
             let _AHD_Regimen = '';
             this.set_AHD_Regimen  = function (_ahd_regimen){
@@ -1466,8 +1546,9 @@ angular.module('bahmni.common.appFramework')
             {
                 return _AHD_Regimen;
             }
-            
+
         }]);
+
 'use strict';
 
 angular.module('bahmni.common.appFramework')
@@ -2867,6 +2948,7 @@ angular.module('bahmni.common.patient')
                 method: "GET",
                 params: {
                     q: query,
+                    limit: 20,
                     startIndex: offset,
                     identifier: identifier,
                     loginLocationUuid: sessionService.getLoginLocationUuid()
@@ -5261,7 +5343,11 @@ angular.module('bahmni.appointments')
                         ? 'INVALID_TIME_ERROR_MESSAGE' : 'INVALID_SERVICE_FORM_ERROR_MESSAGE';
                 } else if (!moment($scope.appointment.startTime, 'hh:mm a')
                         .isBefore(moment($scope.appointment.endTime, 'hh:mm a'), 'minutes')) {
-                    message = 'TIME_SEQUENCE_ERROR_MESSAGE';
+                    // error should show when endtime moment is before start time and also not when endtime is the same as starttime - senenekat
+                    if (!moment($scope.appointment.startTime, 'hh:mm a')
+                        .isSame(moment($scope.appointment.endTime, 'hh:mm a'), 'minutes')) {
+                        message = 'TIME_SEQUENCE_ERROR_MESSAGE';
+                    }
                 }
                 if (message) {
                     messagingService.showMessage('error', message);
@@ -6215,7 +6301,7 @@ angular.module('bahmni.appointments')
                                 var contact;
                          
                                 
-                                console.log(client.data.person.addresses[0].cityVillage)
+                                // console.log(client.data.person.addresses[0].cityVillage)
                                
                                 client.data.person.attributes.forEach(attribute =>{
                                     //console.log(attribute.attributeType.display.concat(": ", attribute.value))

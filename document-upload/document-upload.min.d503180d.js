@@ -501,7 +501,87 @@ angular.module('bahmni.common.appFramework')
                 });
                 return patient;
             };
-           
+           // Getting CAG dat from API - senekanet and shalet
+           this.getCAG = function (uuid) {
+                var cag = $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cag/" + uuid, {
+                method: "GET", 
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+               return cag;
+           };
+           // posting cag appointment to API - senekane
+           this.createAppointment = function (appointment) {
+                var createAppointmentApiUrl = Bahmni.Common.Constants.openmrsUrl+"/ws/rest/v1/appointment";
+                
+                return $http.post(createAppointmentApiUrl, appointment, {
+                    withCredentials: true,
+                    headers: {"Accept": "application/json", "Content-Type": "application/json"}
+                });
+            };
+           // getting visit data by uuid from API - senekanet
+            this.fetchingVisitDatabyUuid = function (uuid) {
+                return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/visit/"+uuid, {
+                    method: "GET", 
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    withCredentials: true
+                });
+                
+            };
+
+           this.getAllCags = function () {
+            return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cag/", {
+                method: "GET",
+                params: {v: "full"},
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+            
+        };
+
+        this.getCagVisit = function (patientUuid) {
+            return $http.get(Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cagVisit?attenderuuid="+patientUuid+'&isactive='+true, {
+                method: "GET",
+                params: {v: "full"},
+                headers: {
+                    'Content-Type': 'application/json'
+                  },
+                withCredentials: true
+            });
+             
+        };
+
+        this.createCagEncounter = function(cagEncounterData){
+            
+            return $http({
+                url: Bahmni.Common.Constants.openmrsUrl + "/ws/rest/v1/cagEncounter/",
+                method: 'POST',
+                params: {v: "full"},
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                data: angular.toJson(cagEncounterData)
+                })
+        }
+
+            this.getCagPatient = function(patientUuid){
+                var cagPatient = $http.get(
+                    Bahmni.Common.Constants.openmrsUrl + '/ws/rest/v1/cagVisit?attenderuuid='+patientUuid+'&isactive='+true,
+                    {
+                        method : "GET",
+                        params: {v: "full"},
+                        withCredentials: true
+                    }
+                );   
+                
+                return cagPatient;
+            }
 
             var loadTemplate = function (appDescriptor) {
                 var deferrable = $q.defer();
@@ -723,7 +803,7 @@ angular.module('bahmni.common.appFramework')
 
             // **************Function to be used to set and get flags****************
             let Regimen = '';
-            let isActiveSet = false; 
+            let isActiveSet = false;
             let isDeactivated = false;
             let Followupdate = '';
             let isOderhasBeenSaved = null;
@@ -792,7 +872,7 @@ angular.module('bahmni.common.appFramework')
             {
                 return savedFormName ;
             }
-            
+
             this.setIsFieldAutoFilled   = function (_isFieldAutoFilled ){
                 isFieldAutoFilled  = _isFieldAutoFilled ;
             }
@@ -800,7 +880,7 @@ angular.module('bahmni.common.appFramework')
             {
                 return isFieldAutoFilled ;
             }
-            
+
             //-------------------------------AHD Meds Flags------------------------------------
             let _AHD_Regimen = '';
             this.set_AHD_Regimen  = function (_ahd_regimen){
@@ -810,8 +890,9 @@ angular.module('bahmni.common.appFramework')
             {
                 return _AHD_Regimen;
             }
-            
+
         }]);
+
 'use strict';
 
 angular.module('bahmni.common.appFramework')
@@ -1670,6 +1751,7 @@ angular.module('bahmni.common.patient')
                 method: "GET",
                 params: {
                     q: query,
+                    limit: 20,
                     startIndex: offset,
                     identifier: identifier,
                     loginLocationUuid: sessionService.getLoginLocationUuid()
@@ -3083,22 +3165,20 @@ angular.module('bahmni.common.patientSearch')
 
 angular.module('bahmni.common.patientSearch')
 .controller('PatientsListController', ['$scope', '$window', 'patientService', '$rootScope', 'appService', 'spinner',
-    '$stateParams', '$bahmniCookieStore', 'printer', 'configurationService',
-    function ($scope, $window, patientService, $rootScope, appService, spinner, $stateParams, $bahmniCookieStore, printer, configurationService) {
+    '$stateParams', '$bahmniCookieStore', 'printer', 'configurationService', '$q',
+    function ($scope, $window, patientService, $rootScope, appService, spinner, $stateParams, $bahmniCookieStore, printer, configurationService, $q) {
         const DEFAULT_FETCH_DELAY = 2000;
         var patientSearchConfig = appService.getAppDescriptor().getConfigValue("patientSearch");
         var patientListSpinner;
+        $scope.otherCagMember=[];
+        $scope.cagname={};
         var initialize = function () {
+            // $scope.cagLoad=1;
             var searchTypes = appService.getAppDescriptor().getExtensions("org.bahmni.patient.search", "config").map(mapExtensionToSearchType);
             $scope.search = new Bahmni.Common.PatientSearch.Search(_.without(searchTypes, undefined));
             $scope.search.markPatientEntry();
             $scope.$watch('search.searchType', function (currentSearchType) {
                 _.isEmpty(currentSearchType) || fetchPatients(currentSearchType);
-            });
-            $scope.$watch('search.activePatients', function (activePatientsList) {
-                if (activePatientsList.length > 0 && patientListSpinner) {
-                    hideSpinner(spinner, patientListSpinner, $(".tab-content"));
-                }
             });
             if (patientSearchConfig && patientSearchConfig.serializeSearch) {
                 getPatientCountSeriallyBySearchIndex(0);
@@ -3115,12 +3195,69 @@ angular.module('bahmni.common.patientSearch')
                 $scope.primaryIdentifier = _.find(response.identifierTypesConfig, {primary: true}).name;
             });
         };
-
+        
+        $scope.searchotherCagMembers = function(key){
+            for(var i=0;i<$scope.otherCagMember.length;i++){
+                if(key==$scope.otherCagMember.member_uuid){
+                    return 1;
+                }
+            }
+            return 0;
+        }
+        $scope.isCagVisit = function(patientx,index) {
+            if(patientx.activeVisitUuid!=null){
+                appService.fetchingVisitDatabyUuid(patientx.activeVisitUuid).then(function(res) {
+                    if(res.data.display){
+                        if(res.data.display.substring(0,3)=="CAG"){
+                            patientx['showIsCag'] = true;
+                            patientx['presentMember'] = false;
+                            // patientx['cagName'] = "";
+                            appService.getCagVisit(patientx.uuid).then(function(response){
+                                if(response.data.results && response.data.results.length>0){
+                                    if(response.data.results[0].attender.uuid==patientx.uuid){
+                                        patientx['presentMember'] = true;
+                                        patientx['cagName'] = response.data.results[0].cag.name;
+                                    }
+                                    for (let i = 0; i < response.data.results[0].visits.length; i++) {
+                                        if(patientx.uuid!=response.data.results[0].visits[i].patient.uuid){
+                                            if(!$scope.cagname.hasOwnProperty(patientx.uuid)){
+                                                $scope.cagname[response.data.results[0].visits[i].patient.uuid]=response.data.results[0].cag.name;
+                                            }
+                                        }                                    
+                                    }
+                                }
+                                else if(response.data.results && response.data.results.length==0){
+                                    var member={
+                                        "member_uuid":patientx.uuid,
+                                        "index":index
+                                    }
+                                    if($scope.searchotherCagMembers(patientx.uuid)==0){
+                                        $scope.otherCagMember.push(member);
+                                    }
+                                }
+                                for(var i=0;i<$scope.otherCagMember.length;i++){
+                                    if($scope.otherCagMember[i].member_uuid!=undefined && $scope.otherCagMember[i].index!=undefined && $scope.search.visiblePatients[$scope.otherCagMember[i].index]!=undefined){
+                                        if($scope.cagname.hasOwnProperty($scope.otherCagMember[i].member_uuid)){
+                                            var x=$scope.otherCagMember[i].member_uuid
+                                            $scope.search.visiblePatients[$scope.otherCagMember[i].index]['cagName']=$scope.cagname[x];
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }) 
+            }
+        }
+        
         $scope.searchPatients = function () {
             return spinner.forPromise(patientService.search($scope.search.searchParameter)).then(function (response) {
                 $scope.search.updateSearchResults(response.data.pageOfResults);
-                if ($scope.search.hasSingleActivePatient()) {
-                    $scope.forwardPatient($scope.search.activePatients[0]);
+                // if ($scope.search.hasSingleActivePatient() ) {
+                if (response.data.pageOfResults.length==1) {
+                    if( response.data.pageOfResults[0].presentMember==true){
+                        $scope.forwardPatient($scope.search.activePatients[0]);
+                    }
                 }
             });
         };
@@ -3240,6 +3377,15 @@ angular.module('bahmni.common.patientSearch')
             }
         };
 
+        $scope.checkifCagPresentMember = function(patient, isCag, isPresentCagMember){
+            if((isPresentCagMember==true && isCag==true) || (isPresentCagMember==undefined && isCag==undefined)){
+                $scope.forwardPatient(patient);
+            }
+            else{
+                alert("Not a present cag member!",isCag);
+            }
+        }
+
         $scope.forwardPatient = function (patient, heading) {
             var options = $.extend({}, $stateParams);
             $rootScope.patientAdmitLocationStatus = patient.Status;
@@ -3288,6 +3434,7 @@ angular.module('bahmni.common.patientSearch')
             }
         };
         initialize();
+        
     }
 ]);
 
@@ -4697,6 +4844,8 @@ Bahmni.Common.AuditLogEventDetails = {
     "EDIT_ENCOUNTER": {eventType: "EDIT_ENCOUNTER", message: "EDIT_ENCOUNTER_MESSAGE"},
 
     "VIEWED_REGISTRATION_PATIENT_SEARCH": {eventType: "VIEWED_REGISTRATION_PATIENT_SEARCH", message: "VIEWED_REGISTRATION_PATIENT_SEARCH_MESSAGE"},
+    "VIEWED_REGISTRATION_CAG_SEARCH": {eventType: "VIEWED_REGISTRATION_CAG_SEARCH", message: "VIEWED_REGISTRATION_CAG_SEARCH_MESSAGE"},
+    "VIEWED_NEW_CAG_PAGE": {eventType: "VIEWED_NEW_CAG_PAGE", message: "VIEWED_NEW_CAG_PAGE"},
     "VIEWED_NEW_PATIENT_PAGE": {eventType: "VIEWED_NEW_PATIENT_PAGE", message: "VIEWED_NEW_PATIENT_PAGE_MESSAGE"},
     "REGISTER_NEW_PATIENT": {eventType: "REGISTER_NEW_PATIENT", message: "REGISTER_NEW_PATIENT_MESSAGE"},
     "EDIT_PATIENT_DETAILS": {eventType: "EDIT_PATIENT_DETAILS", message: "EDIT_PATIENT_DETAILS_MESSAGE"},
