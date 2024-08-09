@@ -6253,15 +6253,15 @@ angular.module('bahmni.appointments')
                 {heading: 'APPOINTMENT_PATIENT_NAME', sortInfo: 'patient.name', class: true, enable: true},
                 {heading: 'APPOINTMENT_PATIENT_AGE', sortInfo: 'age', enable: true},
                 {heading: 'APPOINTMENT_PATIENT_SEX', sortInfo: 'gender', enable: true},
+                {heading: 'APPOINTMENT_STATUS', sortInfo: 'status', enable: true},
+                {heading: 'APPOINTMENT_SERVICE_LOCATION_KEY', sortInfo: 'location.name', class: true, enable: true},
                 {heading: 'APPOINTMENT_PATIENT_CONTACTS', sortInfo: 'contacts', enable: true},
                 {heading: 'APPOINTMENT_PATIENT_VILLAGE', sortInfo: 'contacts', enable: true},
                 {heading: 'APPOINTMENT_PROVIDER', sortInfo: 'provider.name', class: true, enable: true},
                 {heading: 'APPOINTMENT_SERVICE_SPECIALITY_KEY', sortInfo: 'service.speciality.name', enable: $scope.enableSpecialities},
                 {heading: 'APPOINTMENT_SERVICE', sortInfo: 'service.name', class: true, enable: true},
                 {heading: 'APPOINTMENT_SERVICE_TYPE_FULL', sortInfo: 'serviceType.name', class: true, enable: $scope.enableServiceTypes},
-                {heading: 'APPOINTMENT_STATUS', sortInfo: 'status', enable: true},
                 {heading: 'APPOINTMENT_WALK_IN', sortInfo: 'appointmentKind', enable: true},
-                {heading: 'APPOINTMENT_SERVICE_LOCATION_KEY', sortInfo: 'location.name', class: true, enable: true},
                 {heading: 'APPOINTMENT_ADDITIONAL_INFO', sortInfo: 'additionalInfo', class: true, enable: true},
                 {heading: 'APPOINTMENT_CREATE_NOTES', sortInfo: 'comments', enable: true}];
             var init = function () {
@@ -6588,13 +6588,21 @@ angular.module('bahmni.appointments')
 'use strict';
 
 angular.module('bahmni.appointments')
-    .controller('AppointmentsFilterController', ['$scope', '$state', '$rootScope', '$q', '$translate', 'appointmentsServiceService', 'spinner', 'ivhTreeviewMgr', 'providerService', 'appService',
-        function ($scope, $state, $rootScope, $q, $translate, appointmentsServiceService, spinner, ivhTreeviewMgr, providerService, appService) {
+    .controller('AppointmentsFilterController', ['$scope', '$state', '$rootScope', '$q', '$translate', 'locationService', 'appointmentsServiceService', 'spinner', 'ivhTreeviewMgr', 'providerService', 'appService',
+        function ($scope, $state, $rootScope, $q, $translate, locationService, appointmentsServiceService, spinner, ivhTreeviewMgr, providerService, appService) {
             var init = function () {
                 $scope.isSpecialityEnabled = appService.getAppDescriptor().getConfigValue('enableSpecialities');
                 $scope.isServiceTypeEnabled = appService.getAppDescriptor().getConfigValue('enableServiceTypes');
                 $scope.isFilterOpen = $state.params.isFilterOpen;
                 $scope.isSearchEnabled = $state.params.isSearchEnabled;
+
+                locationService.getAllByTag("Visit Location").then(
+                    function (response) {
+                        $scope.locationList = response.data.results;
+                        $scope.selectedLocationList = $scope.locationList;
+                    }
+                );
+
                 $scope.statusList = _.map(Bahmni.Appointments.Constants.appointmentStatusList, function (status) {
                     return {name: status, value: status};
                 });
@@ -6689,6 +6697,7 @@ angular.module('bahmni.appointments')
                     serviceUuids: [],
                     serviceTypeUuids: [],
                     providerUuids: [],
+                    locationList: [],
                     statusList: []
                 };
             };
@@ -6705,6 +6714,7 @@ angular.module('bahmni.appointments')
                     ivhTreeviewMgr.deselectAll($scope.selectedSpecialities, false);
                 }
                 $scope.selectedProviders = [];
+                $scope.selectedLocationList = [];
                 $scope.selectedStatusList = [];
                 $scope.showSelected = false;
                 $scope.filterSelectedValues = undefined;
@@ -6773,6 +6783,10 @@ angular.module('bahmni.appointments')
                     return provider.uuid;
                 });
 
+                $state.params.filterParams.locationList = _.map($scope.selectedLocationList, function (location) {
+                    return location.uuid;
+                });
+
                 $state.params.filterParams.statusList = _.map($scope.selectedStatusList, function (status) {
                     return status.value;
                 });
@@ -6808,6 +6822,10 @@ angular.module('bahmni.appointments')
                             return status.name !== "Cancelled";
                         });
                     } else {
+                        $scope.locationList = _.map(Bahmni.Appointments.Constants.locationList, function (location) {
+                            return location;
+                        });
+
                         $scope.statusList = _.map(Bahmni.Appointments.Constants.appointmentStatusList, function (status) {
                             return {name: status, value: status};
                         });
@@ -6833,15 +6851,25 @@ angular.module('bahmni.appointments')
             });
         };
 
-        var filterAppointmentsByProviders = function (appointments, providerUuids) {
-            if (_.isEmpty(providerUuids)) {
-                return appointments;
-            }
-            return _.filter(appointments, function (appointment) {
-                if (!appointment.provider) return _.includes(providerUuids, 'no-provider-uuid');
-                return appointment.provider && _.includes(providerUuids, appointment.provider.uuid);
-            });
-        };
+//        var filterAppointmentsByProviders = function (appointments, providerUuids) {
+//            if (_.isEmpty(providerUuids)) {
+//                return appointments;
+//            }
+//            return _.filter(appointments, function (appointment) {
+//                if (!appointment.provider) return _.includes(providerUuids, 'no-provider-uuid');
+//                return appointment.provider && _.includes(providerUuids, appointment.provider.uuid);
+//            });
+//        };
+
+        var filterAppointmentsByLocation = function (appointments, locationList) {
+                    if (_.isEmpty(locationList)) {
+                        return appointments;
+                    }
+
+                    return _.filter(appointments, function (appointment) {
+                        return _.includes(locationList, appointment.location.uuid);
+                    });
+                };
 
         var filterAppointmentsByStatus = function (appointments, statusList) {
             if (_.isEmpty(statusList)) {
@@ -6857,13 +6885,14 @@ angular.module('bahmni.appointments')
                 return appointments;
             }
             if ((_.isEmpty(filters.serviceUuids) && _.isEmpty(filters.serviceTypeUuids))) {
-                var appointmentsFilteredByProviders = filterAppointmentsByProviders(appointments, filters.providerUuids);
-                return filterAppointmentsByStatus(appointmentsFilteredByProviders, filters.statusList);
+                var appointmentsFilteredByLocation = filterAppointmentsByLocation(appointments, filters.locationList);
+                return filterAppointmentsByStatus(appointmentsFilteredByLocation, filters.statusList);
             }
+
             var appointmentsFilteredByService = filterAppointmentsByService(appointments, filters.serviceUuids);
             var appointmentsFilteredByServiceType = filterAppointmentsByServiceType(appointments, filters.serviceTypeUuids);
             var appointmentsFilteredBySpeciality = appointmentsFilteredByService.concat(appointmentsFilteredByServiceType);
-            var appointmentsFilteredByProviders = filterAppointmentsByProviders(appointmentsFilteredBySpeciality, filters.providerUuids);
-            return filterAppointmentsByStatus(appointmentsFilteredByProviders, filters.statusList);
+            var appointmentsFilteredByLocation = filterAppointmentsByLocation(appointmentsFilteredBySpeciality, filters.locationList);
+            return filterAppointmentsByStatus(appointmentsFilteredByLocation, filters.statusList);
         };
     }]);

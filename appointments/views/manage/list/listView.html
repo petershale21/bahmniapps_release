@@ -36,6 +36,8 @@
           <!-- Adding Age, Sex and Contacts -->
           <td>{{::appointment.age}}</td>
           <td>{{::appointment.gender}}</td>
+          <td>{{appointment.status}}</td>
+          <td class="table-mid-width">{{::appointment.location.name}}</td>
           <td>{{::appointment.contacts}}</td>
           <td>{{::appointment.village}}</td>
           <td class="table-mid-width">{{::appointment.provider.name}}</td>
@@ -47,9 +49,7 @@
             {{::appointment.serviceType && (appointment.serviceType.name + ' ['
             + appointment.serviceType.duration + ' min]')}}
           </td>
-          <td>{{appointment.status}}</td>
           <td>{{:: isWalkIn(appointment.appointmentKind)}}</td>
-          <td class="table-mid-width">{{::appointment.location.name}}</td>
           <td class="table-mid-width">
             {{display(appointment.additionalInfo)}}
           </td>
